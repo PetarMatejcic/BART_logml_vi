@@ -1,0 +1,485 @@
+#!/usr/bin/env python3
+"""
+Run a parameter grid for one or more simulation scenarios.
+
+Each data-generating function must return:
+
+    X, y, truth
+
+where ``truth`` is a one-dimensional Boolean mask with one entry per column
+of X.
+
+Examples
+--------
+Command line:
+
+    python run_experiments.py \
+        --scenarios cc1 cc2 \
+        --ns 100 500 \
+        --ps 10 50 \
+        --s2s 1 5 \
+        --repeats 20 \
+        --seed 123
+
+Python:
+
+    results = run_experiments(
+        scenarios=["cc1", "cc2"],
+        ns=[100, 500],
+        ps=[10, 50],
+        s2s=[1.0, 5.0],
+        repeats=20,
+        base_seed=123,
+    )
+
+The returned dictionary maps each scenario name to its summary DataFrame.
+Each DataFrame is also saved as a separate CSV file.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import itertools
+import random
+import warnings
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Iterable
+from tqdm.auto import tqdm
+
+import numpy as np
+import pandas as pd
+
+import test_functions as data
+from runners import run_scenario, summarise_results
+from genbart import RegBart, ProbitBart
+
+
+# ---------------------------------------------------------------------------
+# EDITABLE CONFIGURATION
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ScenarioSpec:
+    datagen: Callable[[int, int, float], tuple[np.ndarray, np.ndarray, np.ndarray]]
+    model_key: str
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    model: Any
+    model_params: dict[str, Any]
+    # Set this to the parameter name used by your model, for example
+    # "random_state" or "seed". Leave it as None when the model uses NumPy's
+    # global random state or does not expose a seed parameter.
+    seed_parameter: str | None = None
+
+
+# Add, remove, or rename scenarios here.
+SCENARIOS: dict[str, ScenarioSpec] = {
+    "cc0": ScenarioSpec(data.datagen_cc0, "continuous"),
+    "cc1": ScenarioSpec(data.datagen_cc1, "continuous"),
+    "cc2": ScenarioSpec(data.datagen_cc2, "continuous"),
+    "cm1": ScenarioSpec(data.datagen_cm1, "continuous"),
+    "cm2": ScenarioSpec(data.datagen_cm2, "continuous"),
+    "bm1": ScenarioSpec(data.datagen_bm1, "binary"),
+    "bm2": ScenarioSpec(data.datagen_bm2, "binary"),
+}
+
+
+MODEL_CONFIGS: dict[str, ModelSpec] = {
+    "continuous": ModelSpec(
+        model=RegBart,
+        model_params={"m": 20},
+        seed_parameter="random_state",
+    ),
+    "binary": ModelSpec(
+        model=ProbitBart,
+        model_params={"m": 20},
+        seed_parameter="random_state",
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# EXECUTION
+# ---------------------------------------------------------------------------
+
+METRIC_COLUMNS = (
+    "precision_raw",
+    "recall_raw",
+    "f1_raw",
+    "precision_logl",
+    "recall_logl",
+    "f1_logl",
+)
+
+
+def _stable_seed(
+    base_seed: int,
+    scenario: str,
+    n: int,
+    p: int,
+    s2: float,
+    repeat: int,
+) -> int:
+    """Create a stable seed that does not depend on run order."""
+    value = f"{base_seed}|{scenario}|{n}|{p}|{s2:.17g}|{repeat}"
+    digest = hashlib.blake2b(value.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, byteorder="little", signed=False)
+
+
+def _set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+
+
+def _model_params_for_repeat(model_spec: ModelSpec, seed: int) -> dict[str, Any]:
+    params = copy.deepcopy(model_spec.model_params)
+    if model_spec.seed_parameter is not None:
+        params[model_spec.seed_parameter] = seed
+    return params
+
+
+def _validate_truth(truth: Any, number_of_features: int) -> np.ndarray:
+    truth_array = np.asarray(truth)
+
+    if truth_array.ndim != 1:
+        raise ValueError("truth must be a one-dimensional Boolean mask.")
+
+    if truth_array.size != number_of_features:
+        raise ValueError(
+            f"truth has length {truth_array.size}, but X has "
+            f"{number_of_features} columns."
+        )
+
+    return truth_array.astype(bool, copy=False)
+
+
+def _run_one_repeat(
+    scenario_spec: ScenarioSpec,
+    model_spec: ModelSpec,
+    n: int,
+    p: int,
+    s2: float,
+    seed: int,
+) -> pd.Series:
+    """
+    Run one repeat through the existing run_scenario function.
+
+    The adapter removes truth before run_scenario calls the data generator,
+    while retaining truth for summarise_results.
+    """
+    truth_holder: list[np.ndarray] = []
+
+    def datagen_adapter(
+        adapter_n: int,
+        adapter_p: int,
+        adapter_s: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        generated = scenario_spec.datagen(adapter_n, adapter_p, adapter_s)
+
+        if not isinstance(generated, tuple) or len(generated) != 3:
+            raise ValueError(
+                "The data-generating function must return exactly "
+                "(X, y, truth)."
+            )
+
+        X, y, truth = generated
+        X = np.asarray(X)
+        y = np.asarray(y)
+
+        if X.ndim != 2:
+            raise ValueError(f"X must be two-dimensional; got shape {X.shape}.")
+
+        if y.shape[0] != X.shape[0]:
+            raise ValueError(
+                f"X has {X.shape[0]} rows, but y has length {y.shape[0]}."
+            )
+
+        truth_holder.append(_validate_truth(truth, X.shape[1]))
+        return X, y
+
+    model_params = _model_params_for_repeat(model_spec, seed)
+
+    raw, logl = run_scenario(
+        datagen=datagen_adapter,
+        n=n,
+        p=p,
+        s2=s2,
+        model=model_spec.model,
+        model_params=model_params,
+        repeats=1,
+    )
+
+    if len(truth_holder) != 1:
+        raise RuntimeError(
+            "Expected the data-generating function to be called exactly once."
+        )
+
+    summary = summarise_results(raw, logl, truth_holder[0])
+    return summary.iloc[0]
+
+
+def _summarise_combination(
+    repeat_results: list[pd.Series],
+    repeats_requested: int,
+) -> dict[str, Any]:
+    repeat_df = pd.DataFrame(repeat_results)
+    count = len(repeat_df)
+
+    row: dict[str, Any] = {
+        "repeats_requested": repeats_requested,
+        "repeats_successful": count,
+    }
+
+    for metric in METRIC_COLUMNS:
+        values = repeat_df[metric].astype(float)
+        mean = values.mean()
+        std = values.std(ddof=1) if count > 1 else 0.0
+        se = std / np.sqrt(count) if count > 0 else np.nan
+
+        row[f"{metric}_mean"] = mean
+        row[f"{metric}_std"] = std
+        row[f"{metric}_se"] = se
+
+    return row
+
+
+def _failed_combination_row(
+    repeats_requested: int,
+    error: Exception,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "repeats_requested": repeats_requested,
+        "repeats_successful": 0,
+        "status": "failed",
+        "error": f"{type(error).__name__}: {error}",
+    }
+
+    for metric in METRIC_COLUMNS:
+        row[f"{metric}_mean"] = np.nan
+        row[f"{metric}_std"] = np.nan
+        row[f"{metric}_se"] = np.nan
+
+    return row
+
+
+def _next_output_path(output_dir: Path, scenario: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    first_path = output_dir / f"{scenario}.csv"
+    if not first_path.exists():
+        return first_path
+
+    version = 1
+    while True:
+        candidate = output_dir / f"{scenario}_{version:03d}.csv"
+        if not candidate.exists():
+            return candidate
+        version += 1
+
+
+def run_experiments(
+    scenarios: Iterable[str],
+    ns: Iterable[int],
+    ps: Iterable[int],
+    s2s: Iterable[float],
+    repeats: int,
+    base_seed: int = 0,
+    output_dir: str | Path = "results",
+) -> dict[str, pd.DataFrame]:
+    """
+    Run all requested parameter combinations and save one CSV per scenario.
+
+    Invalid combinations are recorded as failed rows and produce warnings.
+    Other combinations continue running.
+    """
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1.")
+
+    scenario_names = list(dict.fromkeys(scenarios))
+    n_values = list(ns)
+    p_values = list(ps)
+    s2_values = list(s2s)
+    output_dir = Path(output_dir)
+
+    if not scenario_names:
+        raise ValueError("At least one scenario must be selected.")
+    if not n_values or not p_values or not s2_values:
+        raise ValueError("ns, ps, and s2s must all contain at least one value.")
+
+    outputs: dict[str, pd.DataFrame] = {}
+
+    for scenario_name in scenario_names:
+        if scenario_name not in SCENARIOS:
+            warnings.warn(
+                f"Unknown scenario {scenario_name!r}; skipping it.",
+                stacklevel=2,
+            )
+            continue
+
+        scenario_spec = SCENARIOS[scenario_name]
+
+        if scenario_spec.model_key not in MODEL_CONFIGS:
+            warnings.warn(
+                f"Scenario {scenario_name!r} refers to missing model config "
+                f"{scenario_spec.model_key!r}; skipping it.",
+                stacklevel=2,
+            )
+            continue
+
+        model_spec = MODEL_CONFIGS[scenario_spec.model_key]
+        if model_spec.model is None:
+            raise ValueError(
+                f"MODEL_CONFIGS[{scenario_spec.model_key!r}].model is None. "
+                "Set the continuous and binary models in the editable "
+                "configuration section."
+            )
+
+        rows: list[dict[str, Any]] = []
+
+        parameter_grid = itertools.product(n_values, p_values, s2_values)
+        number_of_combinations = (
+            len(n_values)
+            * len(p_values)
+            * len(s2_values)
+        )
+
+        for n, p, s2 in tqdm(
+            parameter_grid,
+            total=number_of_combinations,
+            desc=f"Running {scenario_name}",
+            unit="combination"
+        ):
+            combination = {
+                "scenario": scenario_name,
+                "model_key": scenario_spec.model_key,
+                "n": int(n),
+                "p": int(p),
+                "s2": float(s2),
+            }
+            repeat_results: list[pd.Series] = []
+            combination_error: Exception | None = None
+
+            for repeat in range(repeats):
+                seed = _stable_seed(
+                    base_seed=base_seed,
+                    scenario=scenario_name,
+                    n=int(n),
+                    p=int(p),
+                    s2=float(s2),
+                    repeat=repeat,
+                )
+                _set_seed(seed)
+
+                try:
+                    result = _run_one_repeat(
+                        scenario_spec=scenario_spec,
+                        model_spec=model_spec,
+                        n=int(n),
+                        p=int(p),
+                        s2=float(s2),
+                        seed=seed,
+                    )
+                    repeat_results.append(result)
+                except Exception as error:
+                    combination_error = error
+                    warnings.warn(
+                        "Skipping invalid or failed combination "
+                        f"scenario={scenario_name!r}, n={n}, p={p}, s2={s2}: "
+                        f"{type(error).__name__}: {error}",
+                        stacklevel=2,
+                    )
+                    break
+
+            if repeat_results:
+                row = {
+                    **combination,
+                    **_summarise_combination(
+                        repeat_results=repeat_results,
+                        repeats_requested=repeats,
+                    ),
+                    "status": (
+                        "complete"
+                        if len(repeat_results) == repeats
+                        else "partial"
+                    ),
+                    "error": (
+                        ""
+                        if combination_error is None
+                        else f"{type(combination_error).__name__}: "
+                        f"{combination_error}"
+                    ),
+                }
+            else:
+                assert combination_error is not None
+                row = {
+                    **combination,
+                    **_failed_combination_row(
+                        repeats_requested=repeats,
+                        error=combination_error,
+                    ),
+                }
+
+            rows.append(row)
+
+        scenario_df = pd.DataFrame(rows)
+        output_path = _next_output_path(output_dir, scenario_name)
+        scenario_df.to_csv(output_path, index=False)
+        scenario_df.attrs["output_path"] = str(output_path)
+        outputs[scenario_name] = scenario_df
+
+        print(f"Saved {scenario_name}: {output_path}")
+
+    return outputs
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run selected scenarios over all combinations of n, p, and s2."
+        )
+    )
+    parser.add_argument(
+        "--scenarios",
+        nargs="+",
+        default=["all"],
+        help=(
+            "Scenario names to run, or 'all'. Available: "
+            + ", ".join(SCENARIOS)
+        ),
+    )
+    parser.add_argument("--ns", nargs="+", type=int, required=True)
+    parser.add_argument("--ps", nargs="+", type=int, required=True)
+    parser.add_argument("--s2s", nargs="+", type=float, required=True)
+    parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--output-dir", default="results")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+
+    selected_scenarios = (
+        list(SCENARIOS)
+        if args.scenarios == ["all"]
+        else args.scenarios
+    )
+
+    run_experiments(
+        scenarios=selected_scenarios,
+        ns=args.ns,
+        ps=args.ps,
+        s2s=args.s2s,
+        repeats=args.repeats,
+        base_seed=args.seed,
+        output_dir=args.output_dir,
+    )
+
+
+if __name__ == "__main__":
+    main()
