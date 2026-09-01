@@ -3,7 +3,15 @@ import pandas as pd
 
 from genbart import BartVariableSelector
 
-def run_scenario(datagen, n: int, p: int, s2: float, model, model_params, repeats: int = 1):
+def run_scenario(
+    datagen,
+    n: int,
+    p: int,
+    s2: float,
+    model,
+    model_params,
+    repeats: int = 1,
+):
     s = np.sqrt(s2)
 
     results_raw = []
@@ -25,26 +33,17 @@ def run_scenario(datagen, n: int, p: int, s2: float, model, model_params, repeat
         vi_result_raw = selector.get_result("raw")
         vi_result_logl = selector.get_result("logml")
 
-        results_raw.append(
-            np.vstack(
-            (
-                vi_result_raw.importance,
-                vi_result_raw.thresholds()
-            )
-            )
-        )
+        results_raw.append({
+            method: vi_result_raw.selected_mask(method)
+            for method in ("local", "global_max", "global_se")
+        })
 
-        results_logl.append(
-            np.vstack(
-            (
-                vi_result_logl.importance,
-                vi_result_logl.thresholds()
-            )
-            )
-        )
+        results_logl.append({
+            method: vi_result_logl.selected_mask(method)
+            for method in ("local", "global_max", "global_se")
+        })
 
     return results_raw, results_logl
-
 
 def precision(pred, truth):
     tp = np.sum(pred & truth)
