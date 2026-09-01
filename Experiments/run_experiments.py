@@ -187,7 +187,7 @@ def _run_one_repeat(
         truth_holder.append(_validate_truth(truth, X.shape[1]))
         return X, y
 
-    model_params = model_spec.model_params
+    model_params = dict(model_spec.model_params)
 
     raw, logl = run_scenario(
         datagen=datagen_adapter,
