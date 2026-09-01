@@ -12,23 +12,18 @@ def run_scenario(datagen, n: int, p: int, s2: float, model, model_params, repeat
     for r in range(repeats):
         X, y = datagen(n, p, s)
 
-        bs_raw = BartVariableSelector(
+        selector = BartVariableSelector(
             model,
             model_params,
             n_permutations=10,
             n_repeats=1,
-            importance_kind="raw"
+            importance_kind="raw",
         )
-        vi_result_raw = bs_raw.fit(X, y)
-        
-        bs_logl = BartVariableSelector(
-            model,
-            model_params,
-            n_permutations=10,
-            n_repeats=1,
-            importance_kind="logml"
-        )
-        vi_result_logl = bs_logl.fit(X, y)
+
+        selector.fit(X, y)
+
+        vi_result_raw = selector.get_result("raw")
+        vi_result_logl = selector.get_result("logml")
 
         results_raw.append(
             np.vstack(
