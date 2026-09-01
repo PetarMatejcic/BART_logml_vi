@@ -39,7 +39,6 @@ Each DataFrame is also saved as a separate CSV file.
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
 import itertools
 import random
@@ -72,10 +71,6 @@ class ScenarioSpec:
 class ModelSpec:
     model: Any
     model_params: dict[str, Any]
-    # Set this to the parameter name used by your model, for example
-    # "random_state" or "seed". Leave it as None when the model uses NumPy's
-    # global random state or does not expose a seed parameter.
-    seed_parameter: str | None = None
 
 
 # Add, remove, or rename scenarios here.
@@ -94,12 +89,10 @@ MODEL_CONFIGS: dict[str, ModelSpec] = {
     "continuous": ModelSpec(
         model=RegBart,
         model_params={"m": 20},
-        seed_parameter="random_state",
     ),
     "binary": ModelSpec(
         model=ProbitBart,
         model_params={"m": 20},
-        seed_parameter="random_state",
     ),
 }
 
@@ -133,13 +126,6 @@ def _stable_seed(
 def _set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
-
-
-def _model_params_for_repeat(model_spec: ModelSpec, seed: int) -> dict[str, Any]:
-    params = copy.deepcopy(model_spec.model_params)
-    if model_spec.seed_parameter is not None:
-        params[model_spec.seed_parameter] = seed
-    return params
 
 
 def _validate_truth(truth: Any, number_of_features: int) -> np.ndarray:
@@ -201,7 +187,7 @@ def _run_one_repeat(
         truth_holder.append(_validate_truth(truth, X.shape[1]))
         return X, y
 
-    model_params = _model_params_for_repeat(model_spec, seed)
+    model_params = model_spec.model_params
 
     raw, logl = run_scenario(
         datagen=datagen_adapter,
