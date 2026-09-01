@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from tqdm.auto import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -222,6 +223,57 @@ def _run_one_repeat(
     return summary.iloc[0]
 
 
+def _run_repeat_job(
+    scenario_name: str,
+    n: int,
+    p: int,
+    s2: float,
+    repeat: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Run one complete simulation repeat.
+
+    This function is top-level so it can be executed in a worker process.
+    """
+    scenario_spec = SCENARIOS[scenario_name]
+    model_spec = MODEL_CONFIGS[scenario_spec.model_key]
+
+    _set_seed(seed)
+
+    repeat_info = {
+        "scenario": scenario_name,
+        "model_key": scenario_spec.model_key,
+        "n": int(n),
+        "p": int(p),
+        "s2": float(s2),
+        "repeat": int(repeat),
+        "seed": int(seed),
+    }
+
+    try:
+        result = _run_one_repeat(
+            scenario_spec=scenario_spec,
+            model_spec=model_spec,
+            n=int(n),
+            p=int(p),
+            s2=float(s2),
+            seed=int(seed),
+        )
+
+        return {
+            **repeat_info,
+            **result.to_dict(),
+            "status": "complete",
+            "error": "",
+        }
+
+    except Exception as error:
+        return {
+            **repeat_info,
+            **_failed_repeat_row(error),
+        }
+
+
 def _failed_repeat_row(
     error: Exception,
 ) -> dict[str, Any]:
@@ -260,6 +312,7 @@ def run_experiments(
     repeats: int,
     base_seed: int = 0,
     output_dir: str | Path = "results",
+    n_processes: int = 1,
 ) -> dict[str, pd.DataFrame]:
     """
     Run all requested parameter combinations and save one CSV per scenario.
@@ -269,6 +322,9 @@ def run_experiments(
     """
     if repeats < 1:
         raise ValueError("repeats must be at least 1.")
+
+    if n_processes < 1:
+        raise ValueError("n_processes must be at least 1.")
 
     scenario_names = list(dict.fromkeys(scenarios))
     n_values = list(ns)
@@ -318,70 +374,80 @@ def run_experiments(
             * len(s2_values)
         )
 
-        for n, p, s2 in tqdm(
-            parameter_grid,
-            total=number_of_combinations,
-            desc=f"Running {scenario_name}",
-            unit="combination",
-        ):
-            combination = {
-                "scenario": scenario_name,
-                "model_key": scenario_spec.model_key,
-                "n": int(n),
-                "p": int(p),
-                "s2": float(s2),
-            }
+        executor = (
+            ProcessPoolExecutor(max_workers=n_processes)
+            if n_processes > 1
+            else None
+        )
 
-            for repeat in range(repeats):
-                seed = _stable_seed(
-                    base_seed=base_seed,
-                    scenario=scenario_name,
-                    n=int(n),
-                    p=int(p),
-                    s2=float(s2),
-                    repeat=repeat,
-                )
+        try:
+            for n, p, s2 in tqdm(
+                parameter_grid,
+                total=number_of_combinations,
+                desc=f"Running {scenario_name}",
+                unit="combination",
+            ):
+                jobs = []
 
-                _set_seed(seed)
-
-                repeat_info = {
-                    **combination,
-                    "repeat": repeat,
-                    "seed": seed,
-                }
-
-                try:
-                    result = _run_one_repeat(
-                        scenario_spec=scenario_spec,
-                        model_spec=model_spec,
+                for repeat in range(repeats):
+                    seed = _stable_seed(
+                        base_seed=base_seed,
+                        scenario=scenario_name,
                         n=int(n),
                         p=int(p),
                         s2=float(s2),
-                        seed=seed,
+                        repeat=repeat,
                     )
 
-                    row = {
-                        **repeat_info,
-                        **result.to_dict(),
-                        "status": "complete",
-                        "error": "",
-                    }
-
-                except Exception as error:
-                    warnings.warn(
-                        "Failed repeat "
-                        f"scenario={scenario_name!r}, "
-                        f"n={n}, p={p}, s2={s2}, repeat={repeat}: "
-                        f"{type(error).__name__}: {error}",
-                        stacklevel=2,
+                    jobs.append(
+                        (
+                            scenario_name,
+                            int(n),
+                            int(p),
+                            float(s2),
+                            repeat,
+                            seed,
+                        )
                     )
 
-                    row = {
-                        **repeat_info,
-                        **_failed_repeat_row(error),
-                    }
+                if executor is None:
+                    combination_rows = [
+                        _run_repeat_job(*job)
+                        for job in jobs
+                    ]
 
-                rows.append(row)
+                else:
+                    futures = [
+                        executor.submit(
+                            _run_repeat_job,
+                            *job,
+                        )
+                        for job in jobs
+                    ]
+
+                    combination_rows = [
+                        future.result()
+                        for future in futures
+                    ]
+
+                for row in combination_rows:
+                    if row["status"] == "failed":
+                        warnings.warn(
+                            "Failed repeat "
+                            f"scenario={row['scenario']!r}, "
+                            f"n={row['n']}, "
+                            f"p={row['p']}, "
+                            f"s2={row['s2']}, "
+                            f"repeat={row['repeat']}: "
+                            f"{row['error']}",
+                            stacklevel=2,
+                        )
+
+                    rows.append(row)
+
+        finally:
+            if executor is not None:
+                executor.shutdown()
 
         scenario_df = pd.DataFrame(rows)
         output_path = _next_output_path(output_dir, scenario_name)
@@ -415,6 +481,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output-dir", default="results")
+    parser.add_argument(
+        "--n-processes",
+        type=int,
+        default=1,
+        help=(
+            "Number of simulation repeats to run concurrently. "
+            "Default: 1 (serial execution)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -435,6 +510,7 @@ def main() -> None:
         repeats=args.repeats,
         base_seed=args.seed,
         output_dir=args.output_dir,
+        n_processes=args.n_processes,
     )
 
 
