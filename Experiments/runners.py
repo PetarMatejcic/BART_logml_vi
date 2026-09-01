@@ -69,28 +69,20 @@ def n_selected(pred):
 
 
 def summarise_results(raw, logml, truth):
-    rows = []
+    row = {}
 
-    for raw_result, logml_result in zip(raw, logml):
-        row = {}
+    for method, pred in raw.items():
+        row[f"precision_raw_{method}"] = precision(pred, truth)
+        row[f"recall_raw_{method}"] = recall(pred, truth)
+        row[f"f1_raw_{method}"] = f1_score(pred, truth)
+        row[f"r_miss_raw_{method}"] = r_miss(pred, truth)
+        row[f"n_selected_raw_{method}"] = n_selected(pred)
 
-        for method, pred in raw_result.items():
-            row[f"precision_raw_{method}"] = precision(pred, truth)
-            row[f"recall_raw_{method}"] = recall(pred, truth)
-            row[f"f1_raw_{method}"] = f1_score(pred, truth)
-            row[f"r_miss_raw_{method}"] = r_miss(pred, truth)
-            row[f"n_selected_raw_{method}"] = n_selected(pred)
+    for method, pred in logml.items():
+        row[f"precision_logml_{method}"] = precision(pred, truth)
+        row[f"recall_logml_{method}"] = recall(pred, truth)
+        row[f"f1_logml_{method}"] = f1_score(pred, truth)
+        row[f"r_miss_logml_{method}"] = r_miss(pred, truth)
+        row[f"n_selected_logml_{method}"] = n_selected(pred)
 
-        for method, pred in logml_result.items():
-            row[f"precision_logml_{method}"] = precision(pred, truth)
-            row[f"recall_logml_{method}"] = recall(pred, truth)
-            row[f"f1_logml_{method}"] = f1_score(pred, truth)
-            row[f"r_miss_logml_{method}"] = r_miss(pred, truth)
-            row[f"n_selected_logml_{method}"] = n_selected(pred)
-
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
-    df.index.name = "repeat"
-
-    return df
+    return pd.Series(row)

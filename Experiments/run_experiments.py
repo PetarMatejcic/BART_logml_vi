@@ -210,7 +210,6 @@ def _run_one_repeat(
         s2=s2,
         model=model_spec.model,
         model_params=model_params,
-        repeats=1,
         random_state=seed,
     )
 
