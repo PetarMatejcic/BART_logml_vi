@@ -204,8 +204,7 @@ def _run_one_repeat(
             "Expected the data-generating function to be called exactly once."
         )
 
-    summary = summarise_results(raw, logl, truth_holder[0])
-    return summary.iloc[0]
+    return summarise_results(raw, logl, truth_holder[0])
 
 
 def _run_repeat_job(
@@ -345,57 +344,57 @@ def run_experiments(
 
     outputs: dict[str, pd.DataFrame] = {}
 
-    with tqdm(
-        total=total_repeat_jobs,
-        desc="Experiments",
-        unit="repeat",
-    ) as progress:
+    executor = (
+        ProcessPoolExecutor(max_workers=n_processes)
+        if n_processes > 1
+        else None
+    )
 
-        scenario_position = 0
+    try:
+        with tqdm(
+            total=total_repeat_jobs,
+            desc="Experiments",
+            unit="repeat",
+        ) as progress:
 
-        for scenario_name in scenario_names:
-            if scenario_name not in SCENARIOS:
-                warnings.warn(
-                    f"Unknown scenario {scenario_name!r}; skipping it.",
-                    stacklevel=2,
+            scenario_position = 0
+
+            for scenario_name in scenario_names:
+                if scenario_name not in SCENARIOS:
+                    warnings.warn(
+                        f"Unknown scenario {scenario_name!r}; skipping it.",
+                        stacklevel=2,
+                    )
+                    continue
+
+                scenario_spec = SCENARIOS[scenario_name]
+
+                if scenario_spec.model_key not in MODEL_CONFIGS:
+                    warnings.warn(
+                        f"Scenario {scenario_name!r} refers to missing model config "
+                        f"{scenario_spec.model_key!r}; skipping it.",
+                        stacklevel=2,
+                    )
+                    continue
+
+                model_spec = MODEL_CONFIGS[scenario_spec.model_key]
+                if model_spec.model is None:
+                    raise ValueError(
+                        f"MODEL_CONFIGS[{scenario_spec.model_key!r}].model is None. "
+                        "Set the continuous and binary models in the editable "
+                        "configuration section."
+                    )
+
+                scenario_position += 1
+
+                rows: list[dict[str, Any]] = []
+
+                parameter_grid = itertools.product(
+                    n_values,
+                    p_values,
+                    s2_values,
                 )
-                continue
 
-            scenario_spec = SCENARIOS[scenario_name]
-
-            if scenario_spec.model_key not in MODEL_CONFIGS:
-                warnings.warn(
-                    f"Scenario {scenario_name!r} refers to missing model config "
-                    f"{scenario_spec.model_key!r}; skipping it.",
-                    stacklevel=2,
-                )
-                continue
-
-            model_spec = MODEL_CONFIGS[scenario_spec.model_key]
-            if model_spec.model is None:
-                raise ValueError(
-                    f"MODEL_CONFIGS[{scenario_spec.model_key!r}].model is None. "
-                    "Set the continuous and binary models in the editable "
-                    "configuration section."
-                )
-
-            scenario_position += 1
-
-            rows: list[dict[str, Any]] = []
-
-            parameter_grid = itertools.product(
-                n_values,
-                p_values,
-                s2_values,
-            )
-
-            executor = (
-                ProcessPoolExecutor(max_workers=n_processes)
-                if n_processes > 1
-                else None
-            )
-
-            try:
                 for n, p, s2 in parameter_grid:
 
                     progress.set_postfix(
@@ -469,26 +468,26 @@ def run_experiments(
 
                         rows.append(row)
 
-            finally:
-                if executor is not None:
-                    executor.shutdown()
+                scenario_df = pd.DataFrame(rows)
 
-            scenario_df = pd.DataFrame(rows)
-
-            scenario_df = (
-                scenario_df
-                .sort_values(
-                    ["n", "p", "s2", "repeat"],
-                    kind="stable",
+                scenario_df = (
+                    scenario_df
+                    .sort_values(
+                        ["n", "p", "s2", "repeat"],
+                        kind="stable",
+                    )
+                    .reset_index(drop=True)
                 )
-                .reset_index(drop=True)
-            )
-            output_path = _next_output_path(output_dir, scenario_name)
-            scenario_df.to_csv(output_path, index=False)
-            scenario_df.attrs["output_path"] = str(output_path)
-            outputs[scenario_name] = scenario_df
+                output_path = _next_output_path(output_dir, scenario_name)
+                scenario_df.to_csv(output_path, index=False)
+                scenario_df.attrs["output_path"] = str(output_path)
+                outputs[scenario_name] = scenario_df
 
-            tqdm.write(f"Saved {scenario_name}: {output_path}")
+                tqdm.write(f"Saved {scenario_name}: {output_path}")
+
+    finally:
+        if executor is not None:
+            executor.shutdown()
 
     return outputs
 
