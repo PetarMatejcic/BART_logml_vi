@@ -32,7 +32,7 @@ Python:
         base_seed=123,
     )
 
-The returned dictionary maps each scenario name to its summary DataFrame.
+The returned dictionary maps each scenario name to its repeat-level results DataFrame.
 Each DataFrame is also saved as a separate CSV file.
 """
 
@@ -221,46 +221,17 @@ def _run_one_repeat(
     return summary.iloc[0]
 
 
-def _summarise_combination(
-    repeat_results: list[pd.Series],
-    repeats_requested: int,
-) -> dict[str, Any]:
-    repeat_df = pd.DataFrame(repeat_results)
-    count = len(repeat_df)
-
-    row: dict[str, Any] = {
-        "repeats_requested": repeats_requested,
-        "repeats_successful": count,
-    }
-
-    for metric in METRIC_COLUMNS:
-        values = repeat_df[metric].astype(float)
-        mean = values.mean()
-        std = values.std(ddof=1) if count > 1 else 0.0
-        se = std / np.sqrt(count) if count > 0 else np.nan
-
-        row[f"{metric}_mean"] = mean
-        row[f"{metric}_std"] = std
-        row[f"{metric}_se"] = se
-
-    return row
-
-
-def _failed_combination_row(
-    repeats_requested: int,
+def _failed_repeat_row(
     error: Exception,
 ) -> dict[str, Any]:
+    """Create empty metric values for one failed simulation repeat."""
     row: dict[str, Any] = {
-        "repeats_requested": repeats_requested,
-        "repeats_successful": 0,
         "status": "failed",
         "error": f"{type(error).__name__}: {error}",
     }
 
     for metric in METRIC_COLUMNS:
-        row[f"{metric}_mean"] = np.nan
-        row[f"{metric}_std"] = np.nan
-        row[f"{metric}_se"] = np.nan
+        row[metric] = np.nan
 
     return row
 
@@ -350,7 +321,7 @@ def run_experiments(
             parameter_grid,
             total=number_of_combinations,
             desc=f"Running {scenario_name}",
-            unit="combination"
+            unit="combination",
         ):
             combination = {
                 "scenario": scenario_name,
@@ -359,8 +330,6 @@ def run_experiments(
                 "p": int(p),
                 "s2": float(s2),
             }
-            repeat_results: list[pd.Series] = []
-            combination_error: Exception | None = None
 
             for repeat in range(repeats):
                 seed = _stable_seed(
@@ -371,7 +340,14 @@ def run_experiments(
                     s2=float(s2),
                     repeat=repeat,
                 )
+
                 _set_seed(seed)
+
+                repeat_info = {
+                    **combination,
+                    "repeat": repeat,
+                    "seed": seed,
+                }
 
                 try:
                     result = _run_one_repeat(
@@ -382,47 +358,29 @@ def run_experiments(
                         s2=float(s2),
                         seed=seed,
                     )
-                    repeat_results.append(result)
+
+                    row = {
+                        **repeat_info,
+                        **result.to_dict(),
+                        "status": "complete",
+                        "error": "",
+                    }
+
                 except Exception as error:
-                    combination_error = error
                     warnings.warn(
-                        "Skipping invalid or failed combination "
-                        f"scenario={scenario_name!r}, n={n}, p={p}, s2={s2}: "
+                        "Failed repeat "
+                        f"scenario={scenario_name!r}, "
+                        f"n={n}, p={p}, s2={s2}, repeat={repeat}: "
                         f"{type(error).__name__}: {error}",
                         stacklevel=2,
                     )
-                    break
 
-            if repeat_results:
-                row = {
-                    **combination,
-                    **_summarise_combination(
-                        repeat_results=repeat_results,
-                        repeats_requested=repeats,
-                    ),
-                    "status": (
-                        "complete"
-                        if len(repeat_results) == repeats
-                        else "partial"
-                    ),
-                    "error": (
-                        ""
-                        if combination_error is None
-                        else f"{type(combination_error).__name__}: "
-                        f"{combination_error}"
-                    ),
-                }
-            else:
-                assert combination_error is not None
-                row = {
-                    **combination,
-                    **_failed_combination_row(
-                        repeats_requested=repeats,
-                        error=combination_error,
-                    ),
-                }
+                    row = {
+                        **repeat_info,
+                        **_failed_repeat_row(error),
+                    }
 
-            rows.append(row)
+                rows.append(row)
 
         scenario_df = pd.DataFrame(rows)
         output_path = _next_output_path(output_dir, scenario_name)
