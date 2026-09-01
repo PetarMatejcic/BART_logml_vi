@@ -10,40 +10,35 @@ def run_scenario(
     s2: float,
     model,
     model_params,
-    repeats: int = 1,
     random_state: int | None = None,
 ):
     s = np.sqrt(s2)
 
-    results_raw = []
-    results_logml = []
+    X, y = datagen(n, p, s)
 
-    for r in range(repeats):
-        X, y = datagen(n, p, s)
+    selector = BartVariableSelector(
+        model,
+        model_params,
+        n_permutations=10,
+        n_repeats=1,
+        importance_kind="raw",
+        random_state=random_state,
+    )
 
-        selector = BartVariableSelector(
-            model,
-            model_params,
-            n_permutations=10,
-            n_repeats=1,
-            importance_kind="raw",
-            random_state=random_state,
-        )
+    selector.fit(X, y)
 
-        selector.fit(X, y)
+    vi_result_raw = selector.get_result("raw")
+    vi_result_logml = selector.get_result("logml")
 
-        vi_result_raw = selector.get_result("raw")
-        vi_result_logml = selector.get_result("logml")
+    results_raw = {
+        method: vi_result_raw.selected_mask(method)
+        for method in ("local", "global_max", "global_se")
+    }
 
-        results_raw.append({
-            method: vi_result_raw.selected_mask(method)
-            for method in ("local", "global_max", "global_se")
-        })
-
-        results_logml.append({
-            method: vi_result_logml.selected_mask(method)
-            for method in ("local", "global_max", "global_se")
-        })
+    results_logml = {
+        method: vi_result_logml.selected_mask(method)
+        for method in ("local", "global_max", "global_se")
+    }
 
     return results_raw, results_logml
 
