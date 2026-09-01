@@ -11,6 +11,7 @@ def run_scenario(
     model,
     model_params,
     repeats: int = 1,
+    random_state: int | None = None,
 ):
     s = np.sqrt(s2)
 
@@ -26,6 +27,7 @@ def run_scenario(
             n_permutations=10,
             n_repeats=1,
             importance_kind="raw",
+            random_state=random_state,
         )
 
         selector.fit(X, y)

@@ -210,6 +210,7 @@ def _run_one_repeat(
         model=model_spec.model,
         model_params=model_params,
         repeats=1,
+        random_state=seed,
     )
 
     if len(truth_holder) != 1:
