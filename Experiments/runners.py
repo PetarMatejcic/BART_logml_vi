@@ -16,7 +16,7 @@ def run_scenario(
     s = np.sqrt(s2)
 
     results_raw = []
-    results_logl = []
+    results_logml = []
 
     for r in range(repeats):
         X, y = datagen(n, p, s)
@@ -33,19 +33,19 @@ def run_scenario(
         selector.fit(X, y)
 
         vi_result_raw = selector.get_result("raw")
-        vi_result_logl = selector.get_result("logml")
+        vi_result_logml = selector.get_result("logml")
 
         results_raw.append({
             method: vi_result_raw.selected_mask(method)
             for method in ("local", "global_max", "global_se")
         })
 
-        results_logl.append({
-            method: vi_result_logl.selected_mask(method)
+        results_logml.append({
+            method: vi_result_logml.selected_mask(method)
             for method in ("local", "global_max", "global_se")
         })
 
-    return results_raw, results_logl
+    return results_raw, results_logml
 
 def precision(pred, truth):
     tp = np.sum(pred & truth)
@@ -73,10 +73,10 @@ def n_selected(pred):
     return int(np.sum(pred))
 
 
-def summarise_results(raw, logl, truth):
+def summarise_results(raw, logml, truth):
     rows = []
 
-    for raw_result, logl_result in zip(raw, logl):
+    for raw_result, logml_result in zip(raw, logml):
         row = {}
 
         for method, pred in raw_result.items():
@@ -86,12 +86,12 @@ def summarise_results(raw, logl, truth):
             row[f"r_miss_raw_{method}"] = r_miss(pred, truth)
             row[f"n_selected_raw_{method}"] = n_selected(pred)
 
-        for method, pred in logl_result.items():
-            row[f"precision_logl_{method}"] = precision(pred, truth)
-            row[f"recall_logl_{method}"] = recall(pred, truth)
-            row[f"f1_logl_{method}"] = f1_score(pred, truth)
-            row[f"r_miss_logl_{method}"] = r_miss(pred, truth)
-            row[f"n_selected_logl_{method}"] = n_selected(pred)
+        for method, pred in logml_result.items():
+            row[f"precision_logml_{method}"] = precision(pred, truth)
+            row[f"recall_logml_{method}"] = recall(pred, truth)
+            row[f"f1_logml_{method}"] = f1_score(pred, truth)
+            row[f"r_miss_logml_{method}"] = r_miss(pred, truth)
+            row[f"n_selected_logml_{method}"] = n_selected(pred)
 
         rows.append(row)
 
