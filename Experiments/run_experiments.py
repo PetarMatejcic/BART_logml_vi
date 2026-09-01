@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from tqdm.auto import tqdm
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -337,125 +337,173 @@ def run_experiments(
     if not n_values or not p_values or not s2_values:
         raise ValueError("ns, ps, and s2s must all contain at least one value.")
 
+    runnable_scenario_names = [
+        scenario_name
+        for scenario_name in scenario_names
+        if (
+            scenario_name in SCENARIOS
+            and SCENARIOS[scenario_name].model_key in MODEL_CONFIGS
+        )
+    ]
+
+    number_of_combinations = (
+        len(n_values)
+        * len(p_values)
+        * len(s2_values)
+    )
+
+    total_repeat_jobs = (
+        len(runnable_scenario_names)
+        * number_of_combinations
+        * repeats
+    )
+
     outputs: dict[str, pd.DataFrame] = {}
 
-    for scenario_name in scenario_names:
-        if scenario_name not in SCENARIOS:
-            warnings.warn(
-                f"Unknown scenario {scenario_name!r}; skipping it.",
-                stacklevel=2,
+    with tqdm(
+        total=total_repeat_jobs,
+        desc="Experiments",
+        unit="repeat",
+    ) as progress:
+
+        scenario_position = 0
+
+        for scenario_name in scenario_names:
+            if scenario_name not in SCENARIOS:
+                warnings.warn(
+                    f"Unknown scenario {scenario_name!r}; skipping it.",
+                    stacklevel=2,
+                )
+                continue
+
+            scenario_spec = SCENARIOS[scenario_name]
+
+            if scenario_spec.model_key not in MODEL_CONFIGS:
+                warnings.warn(
+                    f"Scenario {scenario_name!r} refers to missing model config "
+                    f"{scenario_spec.model_key!r}; skipping it.",
+                    stacklevel=2,
+                )
+                continue
+
+            model_spec = MODEL_CONFIGS[scenario_spec.model_key]
+            if model_spec.model is None:
+                raise ValueError(
+                    f"MODEL_CONFIGS[{scenario_spec.model_key!r}].model is None. "
+                    "Set the continuous and binary models in the editable "
+                    "configuration section."
+                )
+
+            scenario_position += 1
+
+            rows: list[dict[str, Any]] = []
+
+            parameter_grid = itertools.product(
+                n_values,
+                p_values,
+                s2_values,
             )
-            continue
 
-        scenario_spec = SCENARIOS[scenario_name]
-
-        if scenario_spec.model_key not in MODEL_CONFIGS:
-            warnings.warn(
-                f"Scenario {scenario_name!r} refers to missing model config "
-                f"{scenario_spec.model_key!r}; skipping it.",
-                stacklevel=2,
-            )
-            continue
-
-        model_spec = MODEL_CONFIGS[scenario_spec.model_key]
-        if model_spec.model is None:
-            raise ValueError(
-                f"MODEL_CONFIGS[{scenario_spec.model_key!r}].model is None. "
-                "Set the continuous and binary models in the editable "
-                "configuration section."
+            executor = (
+                ProcessPoolExecutor(max_workers=n_processes)
+                if n_processes > 1
+                else None
             )
 
-        rows: list[dict[str, Any]] = []
+            try:
+                for n, p, s2 in parameter_grid:
 
-        parameter_grid = itertools.product(n_values, p_values, s2_values)
-        number_of_combinations = (
-            len(n_values)
-            * len(p_values)
-            * len(s2_values)
-        )
-
-        executor = (
-            ProcessPoolExecutor(max_workers=n_processes)
-            if n_processes > 1
-            else None
-        )
-
-        try:
-            for n, p, s2 in tqdm(
-                parameter_grid,
-                total=number_of_combinations,
-                desc=f"Running {scenario_name}",
-                unit="combination",
-            ):
-                jobs = []
-
-                for repeat in range(repeats):
-                    seed = _stable_seed(
-                        base_seed=base_seed,
-                        scenario=scenario_name,
+                    progress.set_postfix(
+                        scenario=f"{scenario_name} "
+                                f"({scenario_position}/{len(runnable_scenario_names)})",
                         n=int(n),
                         p=int(p),
                         s2=float(s2),
-                        repeat=repeat,
+                        refresh=True,
                     )
 
-                    jobs.append(
-                        (
-                            scenario_name,
-                            int(n),
-                            int(p),
-                            float(s2),
-                            repeat,
-                            seed,
-                        )
-                    )
+                    jobs = []
 
-                if executor is None:
-                    combination_rows = [
-                        _run_repeat_job(*job)
-                        for job in jobs
-                    ]
-
-                else:
-                    futures = [
-                        executor.submit(
-                            _run_repeat_job,
-                            *job,
-                        )
-                        for job in jobs
-                    ]
-
-                    combination_rows = [
-                        future.result()
-                        for future in futures
-                    ]
-
-                for row in combination_rows:
-                    if row["status"] == "failed":
-                        warnings.warn(
-                            "Failed repeat "
-                            f"scenario={row['scenario']!r}, "
-                            f"n={row['n']}, "
-                            f"p={row['p']}, "
-                            f"s2={row['s2']}, "
-                            f"repeat={row['repeat']}: "
-                            f"{row['error']}",
-                            stacklevel=2,
+                    for repeat in range(repeats):
+                        seed = _stable_seed(
+                            base_seed=base_seed,
+                            scenario=scenario_name,
+                            n=int(n),
+                            p=int(p),
+                            s2=float(s2),
+                            repeat=repeat,
                         )
 
-                    rows.append(row)
+                        jobs.append(
+                            (
+                                scenario_name,
+                                int(n),
+                                int(p),
+                                float(s2),
+                                repeat,
+                                seed,
+                            )
+                        )
 
-        finally:
-            if executor is not None:
-                executor.shutdown()
+                    combination_rows = []
 
-        scenario_df = pd.DataFrame(rows)
-        output_path = _next_output_path(output_dir, scenario_name)
-        scenario_df.to_csv(output_path, index=False)
-        scenario_df.attrs["output_path"] = str(output_path)
-        outputs[scenario_name] = scenario_df
+                    if executor is None:
+                        # Serial execution: update immediately after every repeat.
+                        for job in jobs:
+                            row = _run_repeat_job(*job)
+                            combination_rows.append(row)
+                            progress.update(1)
 
-        print(f"Saved {scenario_name}: {output_path}")
+                    else:
+                        # Parallel execution: update whenever any worker finishes.
+                        futures = [
+                            executor.submit(
+                                _run_repeat_job,
+                                *job,
+                            )
+                            for job in jobs
+                        ]
+
+                        for future in as_completed(futures):
+                            row = future.result()
+                            combination_rows.append(row)
+                            progress.update(1)
+
+                    for row in combination_rows:
+                        if row["status"] == "failed":
+                            warnings.warn(
+                                "Failed repeat "
+                                f"scenario={row['scenario']!r}, "
+                                f"n={row['n']}, "
+                                f"p={row['p']}, "
+                                f"s2={row['s2']}, "
+                                f"repeat={row['repeat']}: "
+                                f"{row['error']}",
+                                stacklevel=2,
+                            )
+
+                        rows.append(row)
+
+            finally:
+                if executor is not None:
+                    executor.shutdown()
+
+            scenario_df = pd.DataFrame(rows)
+
+            scenario_df = (
+                scenario_df
+                .sort_values(
+                    ["n", "p", "s2", "repeat"],
+                    kind="stable",
+                )
+                .reset_index(drop=True)
+            )
+            output_path = _next_output_path(output_dir, scenario_name)
+            scenario_df.to_csv(output_path, index=False)
+            scenario_df.attrs["output_path"] = str(output_path)
+            outputs[scenario_name] = scenario_df
+
+            tqdm.write(f"Saved {scenario_name}: {output_path}")
 
     return outputs
 
