@@ -111,7 +111,7 @@ METRIC_COLUMNS = tuple(
     f"{metric}_{importance}_{method}"
     for importance in ("raw", "logl")
     for method in ("local", "global_max", "global_se")
-    for metric in ("precision", "recall", "f1")
+    for metric in ("precision", "recall", "f1", "r_miss", "n_selected")
 )
 
 

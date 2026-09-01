@@ -62,18 +62,13 @@ def f1_score(pred, truth):
     r = recall(pred, truth)
     return 2 * p * r / (p + r) if p + r > 0 else 0.0
 
-def statistics(preds, truth):
-    prec = np.array(
-        [precision(p, truth) for p in preds]
-    )
-    rec = np.array(
-        [recall(p, truth) for p in preds]
-    )
-    f1 = np.array(
-        [f1_score(p, truth) for p in preds]
-    )
 
-    return prec, rec, f1
+def r_miss(pred, truth):
+    return int(np.any(truth & ~pred))
+
+
+def n_selected(pred):
+    return int(np.sum(pred))
 
 
 def summarise_results(raw, logl, truth):
@@ -86,11 +81,15 @@ def summarise_results(raw, logl, truth):
             row[f"precision_raw_{method}"] = precision(pred, truth)
             row[f"recall_raw_{method}"] = recall(pred, truth)
             row[f"f1_raw_{method}"] = f1_score(pred, truth)
+            row[f"r_miss_raw_{method}"] = r_miss(pred, truth)
+            row[f"n_selected_raw_{method}"] = n_selected(pred)
 
         for method, pred in logl_result.items():
             row[f"precision_logl_{method}"] = precision(pred, truth)
             row[f"recall_logl_{method}"] = recall(pred, truth)
             row[f"f1_logl_{method}"] = f1_score(pred, truth)
+            row[f"r_miss_logl_{method}"] = r_miss(pred, truth)
+            row[f"n_selected_logl_{method}"] = n_selected(pred)
 
         rows.append(row)
 
