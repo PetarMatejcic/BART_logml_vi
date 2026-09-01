@@ -107,13 +107,11 @@ MODEL_CONFIGS: dict[str, ModelSpec] = {
 # EXECUTION
 # ---------------------------------------------------------------------------
 
-METRIC_COLUMNS = (
-    "precision_raw",
-    "recall_raw",
-    "f1_raw",
-    "precision_logl",
-    "recall_logl",
-    "f1_logl",
+METRIC_COLUMNS = tuple(
+    f"{metric}_{importance}_{method}"
+    for importance in ("raw", "logl")
+    for method in ("local", "global_max", "global_se")
+    for metric in ("precision", "recall", "f1")
 )
 
 

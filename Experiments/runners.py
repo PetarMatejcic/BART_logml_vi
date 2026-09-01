@@ -77,23 +77,24 @@ def statistics(preds, truth):
 
 
 def summarise_results(raw, logl, truth):
-    raw_masks = [r[0, :] > r[1, :]
-                 for r in raw]
-    logl_masks = [l[0, :] > l[1, :]
-                  for l in logl]
+    rows = []
 
-    prec_raw, rec_raw, f1_raw = statistics(raw_masks, truth)
-    prec_logl, rec_logl, f1_logl = statistics(logl_masks, truth)
+    for raw_result, logl_result in zip(raw, logl):
+        row = {}
 
-    df = pd.DataFrame({
-        "precision_raw": prec_raw,
-        "recall_raw": rec_raw,
-        "f1_raw": f1_raw,
-        "precision_logl": prec_logl,
-        "recall_logl": rec_logl,
-        "f1_logl": f1_logl,
-    })
+        for method, pred in raw_result.items():
+            row[f"precision_raw_{method}"] = precision(pred, truth)
+            row[f"recall_raw_{method}"] = recall(pred, truth)
+            row[f"f1_raw_{method}"] = f1_score(pred, truth)
 
+        for method, pred in logl_result.items():
+            row[f"precision_logl_{method}"] = precision(pred, truth)
+            row[f"recall_logl_{method}"] = recall(pred, truth)
+            row[f"f1_logl_{method}"] = f1_score(pred, truth)
+
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
     df.index.name = "repeat"
 
     return df
