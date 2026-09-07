@@ -133,6 +133,17 @@ METRIC_COLUMNS = tuple(
 )
 
 
+VARIABLE_COLUMNS = (
+    "true_variables",
+    "selected_raw_local",
+    "selected_raw_global_max",
+    "selected_raw_global_se",
+    "selected_logml_local",
+    "selected_logml_global_max",
+    "selected_logml_global_se",
+)
+
+
 def _stable_seed(
     base_seed: int,
     scenario: str,
@@ -166,6 +177,11 @@ def _validate_truth(truth: Any, number_of_features: int) -> np.ndarray:
         )
 
     return truth_array.astype(bool, copy=False)
+
+
+def _selected_indices(mask: np.ndarray) -> list[int]:
+    """Return zero-based indices selected by a Boolean feature mask."""
+    return [int(j) for j in np.flatnonzero(mask)]
 
 
 def _run_one_configuration(
@@ -226,7 +242,19 @@ def _run_one_configuration(
             "Expected the data-generating function to be called exactly once."
         )
 
-    return summarise_results(raw, logml, truth_holder[0])
+    truth = truth_holder[0]
+
+    result = summarise_results(raw, logml, truth)
+
+    result["true_variables"] = _selected_indices(truth)
+
+    for method, mask in raw.items():
+        result[f"selected_raw_{method}"] = _selected_indices(mask)
+
+    for method, mask in logml.items():
+        result[f"selected_logml_{method}"] = _selected_indices(mask)
+
+    return result
 
 
 def _failed_configuration_row(error: Exception) -> dict[str, Any]:
@@ -238,6 +266,9 @@ def _failed_configuration_row(error: Exception) -> dict[str, Any]:
 
     for metric in METRIC_COLUMNS:
         row[metric] = np.nan
+
+    for column in VARIABLE_COLUMNS:
+        row[column] = np.nan
 
     return row
 
