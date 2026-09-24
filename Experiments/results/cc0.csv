@@ -1,2 +1,0 @@
-scenario,model_key,n,p,s2,repeats_requested,repeats_successful,precision_raw_mean,precision_raw_std,precision_raw_se,recall_raw_mean,recall_raw_std,recall_raw_se,f1_raw_mean,f1_raw_std,f1_raw_se,precision_logl_mean,precision_logl_std,precision_logl_se,recall_logl_mean,recall_logl_std,recall_logl_se,f1_logl_mean,f1_logl_std,f1_logl_se,status,error
-cc0,continuous,100,50,1.0,10,10,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,complete,
