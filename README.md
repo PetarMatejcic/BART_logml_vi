@@ -1,4 +1,4 @@
-# BVI Simulation Experiments
+# BART Feature Selection Simulation Experiments
 
 This repository contains code, simulation results, and analysis notebooks for experiments evaluating BART feature selection across several test scenarios.
 
