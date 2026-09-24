@@ -289,7 +289,11 @@ def aggregate_paired_hyperparameter_results(df):
     return out
 
 
-def display_paired_summary(paired_df, method, output_path=None):
+def display_paired_summary(
+    paired_df,
+    method,
+    output_path=None,
+):
     if method not in {"local", "global_se", "global_max"}:
         raise ValueError(
             "method must be 'local', 'global_se', or 'global_max'."
@@ -311,13 +315,17 @@ def display_paired_summary(paired_df, method, output_path=None):
         "k": 2,
     })
 
-    d = d.sort_values(["_ord", "value"]).reset_index(drop=True)
+    d = (
+        d.sort_values(["_ord", "value"])
+        .reset_index(drop=True)
+    )
 
     out = pd.DataFrame({
         "Parameter": d["Parameter"],
         "Value": d["Value"],
     })
 
+    # Metrics shown in the notebook.
     for metric, label in [
         ("precision", "Δ Precision"),
         ("recall", "Δ Recall"),
@@ -352,10 +360,34 @@ def display_paired_summary(paired_df, method, output_path=None):
             )
         ]
 
-    # Keep CSV headers flat.
-    if output_path is not None:
-        out.to_csv(output_path, index=False)
+    # Full CSV includes diagnostic TP / FP changes.
+    export_out = out.copy()
 
+    for stat, label in [
+        ("delta_tp", "Δ TP"),
+        ("delta_fp", "Δ FP"),
+    ]:
+        for weight, name in [
+            ("raw", "Raw"),
+            ("logml", "LogML"),
+        ]:
+            col = f"{stat}_{weight}_{method}"
+
+            export_out[f"{label} {name}"] = [
+                f"{mean:+.2f} ({se:.2f})"
+                for mean, se in zip(
+                    d[col + "_mean"],
+                    d[col + "_se"],
+                )
+            ]
+
+    if output_path is not None:
+        export_out.to_csv(
+            output_path,
+            index=False,
+        )
+
+    # Notebook display remains compact.
     out.columns = pd.MultiIndex.from_tuples([
         ("", "Parameter"),
         ("", "Value"),
@@ -377,23 +409,48 @@ def display_paired_summary(paired_df, method, output_path=None):
         .set_table_styles([
             {
                 "selector": "th.col2, td.col2",
-                "props": [("border-left", "1px solid rgba(140,140,140,0.45)")],
+                "props": [
+                    (
+                        "border-left",
+                        "1px solid rgba(140,140,140,0.45)",
+                    )
+                ],
             },
             {
                 "selector": "th.col4, td.col4",
-                "props": [("border-left", "1px solid rgba(140,140,140,0.45)")],
+                "props": [
+                    (
+                        "border-left",
+                        "1px solid rgba(140,140,140,0.45)",
+                    )
+                ],
             },
             {
                 "selector": "th.col6, td.col6",
-                "props": [("border-left", "1px solid rgba(140,140,140,0.45)")],
+                "props": [
+                    (
+                        "border-left",
+                        "1px solid rgba(140,140,140,0.45)",
+                    )
+                ],
             },
             {
                 "selector": "th.col8, td.col8",
-                "props": [("border-left", "1px solid rgba(140,140,140,0.45)")],
+                "props": [
+                    (
+                        "border-left",
+                        "1px solid rgba(140,140,140,0.45)",
+                    )
+                ],
             },
             {
                 "selector": "th.col10, td.col10",
-                "props": [("border-left", "1px solid rgba(140,140,140,0.45)")],
+                "props": [
+                    (
+                        "border-left",
+                        "1px solid rgba(140,140,140,0.45)",
+                    )
+                ],
             },
         ])
     )
@@ -402,55 +459,177 @@ def display_paired_summary(paired_df, method, output_path=None):
 
 
 def aggregate_hyperparameter_sensitivity(df):
-    data = df[df["status"].eq("complete")].copy() if "status" in df else df.copy()
-    keys = ["scenario", "model_key", "n", "p", "s2", "repeat", "seed"]
-    stats = ["precision", "recall", "f1", "r_miss", "n_selected"]
-    methods = ["local", "global_se", "global_max"]
+    data = (
+        df[df["status"].eq("complete")].copy()
+        if "status" in df
+        else df.copy()
+    )
+
+    keys = [
+        "scenario",
+        "model_key",
+        "n",
+        "p",
+        "s2",
+        "repeat",
+        "seed",
+    ]
+
+    stats = [
+        "precision",
+        "recall",
+        "f1",
+        "r_miss",
+        "n_selected",
+    ]
+
+    methods = [
+        "local",
+        "global_se",
+        "global_max",
+    ]
 
     ref = data[data["config_id"].eq("reference")]
+
     x = data[~data["config_id"].eq("reference")].merge(
-        ref, on=keys, suffixes=("", "_ref"), validate="many_to_one")
+        ref,
+        on=keys,
+        suffixes=("", "_ref"),
+        validate="many_to_one",
+    )
 
-    x["value"] = x.apply(lambda r: r[r["varied_parameter"]], axis=1)
+    x["value"] = x.apply(
+        lambda r: r[r["varied_parameter"]],
+        axis=1,
+    )
+
     x["reference_value"] = x.apply(
-        lambda r: r[f'{r["varied_parameter"]}_ref'], axis=1)
+        lambda r: r[f'{r["varied_parameter"]}_ref'],
+        axis=1,
+    )
 
+    # Standard metric sensitivities.
     for stat in stats:
         for method in methods:
-            for w in ["raw", "logml"]:
-                c = f"{stat}_{w}_{method}"
-                x[f"abs_delta_{c}"] = (x[c] - x[f"{c}_ref"]).abs()
+            for weight in ["raw", "logml"]:
+                col = f"{stat}_{weight}_{method}"
+
+                x[f"abs_delta_{col}"] = (
+                    x[col] - x[f"{col}_ref"]
+                ).abs()
 
             x[f"sens_diff_{stat}_{method}"] = (
-                x[f"abs_delta_{stat}_logml_{method}"] -
-                x[f"abs_delta_{stat}_raw_{method}"]
+                x[f"abs_delta_{stat}_logml_{method}"]
+                - x[f"abs_delta_{stat}_raw_{method}"]
             )
 
+    # True/false-positive sensitivity and selected-set sensitivity.
+    truth = x["true_variables"].map(_as_set)
+
     for method in methods:
-        for w in ["raw", "logml"]:
-            a = x[f"selected_{w}_{method}"].map(_as_set)
-            r = x[f"selected_{w}_{method}_ref"].map(_as_set)
-            x[f"jaccard_{w}_{method}"] = [
-                _jaccard_distance(sa, sr) for sa, sr in zip(a, r)
+        for weight in ["raw", "logml"]:
+            alt_sets = x[f"selected_{weight}_{method}"].map(_as_set)
+            ref_sets = x[f"selected_{weight}_{method}_ref"].map(_as_set)
+
+            tp_alt = np.array([
+                len(a & t)
+                for a, t in zip(alt_sets, truth)
+            ])
+
+            tp_ref = np.array([
+                len(r & t)
+                for r, t in zip(ref_sets, truth)
+            ])
+
+            fp_alt = np.array([
+                len(a - t)
+                for a, t in zip(alt_sets, truth)
+            ])
+
+            fp_ref = np.array([
+                len(r - t)
+                for r, t in zip(ref_sets, truth)
+            ])
+
+            x[f"abs_delta_tp_{weight}_{method}"] = np.abs(
+                tp_alt - tp_ref
+            )
+
+            x[f"abs_delta_fp_{weight}_{method}"] = np.abs(
+                fp_alt - fp_ref
+            )
+
+            x[f"jaccard_{weight}_{method}"] = [
+                _jaccard_distance(a, r)
+                for a, r in zip(alt_sets, ref_sets)
             ]
 
-        x[f"jaccard_diff_{method}"] = (
-            x[f"jaccard_logml_{method}"] - x[f"jaccard_raw_{method}"]
+        x[f"sens_diff_tp_{method}"] = (
+            x[f"abs_delta_tp_logml_{method}"]
+            - x[f"abs_delta_tp_raw_{method}"]
         )
 
-    groups = ["scenario", "model_key", "n", "p", "s2", "config_id",
-              "varied_parameter", "value", "reference_value"]
-    g = x.groupby(groups, dropna=False, sort=False)
-    out = g.size().rename("n_pairs").reset_index()
+        x[f"sens_diff_fp_{method}"] = (
+            x[f"abs_delta_fp_logml_{method}"]
+            - x[f"abs_delta_fp_raw_{method}"]
+        )
 
-    cols = [c for c in x if c.startswith(
-        ("abs_delta_", "sens_diff_", "jaccard_")
-    )]
+        x[f"jaccard_diff_{method}"] = (
+            x[f"jaccard_logml_{method}"]
+            - x[f"jaccard_raw_{method}"]
+        )
 
-    for c in cols:
-        z = g[c].agg(["mean", "sem"]).rename(
-            columns={"mean": f"{c}_mean", "sem": f"{c}_se"})
-        out = out.merge(z.reset_index(), on=groups)
+    groups = [
+        "scenario",
+        "model_key",
+        "n",
+        "p",
+        "s2",
+        "config_id",
+        "varied_parameter",
+        "value",
+        "reference_value",
+    ]
+
+    g = x.groupby(
+        groups,
+        dropna=False,
+        sort=False,
+    )
+
+    out = (
+        g.size()
+        .rename("n_pairs")
+        .reset_index()
+    )
+
+    cols = [
+        c for c in x
+        if c.startswith(
+            (
+                "abs_delta_",
+                "sens_diff_",
+                "jaccard_",
+            )
+        )
+    ]
+
+    for col in cols:
+        z = (
+            g[col]
+            .agg(["mean", "sem"])
+            .rename(
+                columns={
+                    "mean": f"{col}_mean",
+                    "sem": f"{col}_se",
+                }
+            )
+        )
+
+        out = out.merge(
+            z.reset_index(),
+            on=groups,
+        )
 
     return out
 
@@ -461,7 +640,9 @@ def display_sensitivity_comparison(
     output_path=None,
 ):
     if method not in {"local", "global_se", "global_max"}:
-        raise ValueError("Invalid method.")
+        raise ValueError(
+            "method must be 'local', 'global_se', or 'global_max'."
+        )
 
     d = sensitivity_df.copy()
 
@@ -479,48 +660,146 @@ def display_sensitivity_comparison(
         "k": 2,
     })
 
-    d = d.sort_values(["_ord", "value"])
+    d = (
+        d.sort_values(["_ord", "value"])
+        .reset_index(drop=True)
+    )
 
-    out = d[["Parameter", "Value"]].reset_index(drop=True)
+    # -----------------------------
+    # Notebook display
+    # -----------------------------
+    out = pd.DataFrame({
+        "Parameter": d["Parameter"],
+        "Value": d["Value"],
+    })
 
-    metrics = [
-        ("recall", "Recall", 1, ""),
-        ("f1", "F1", 1, ""),
-        ("r_miss", "r_miss", 100, " pp"),
-        ("n_selected", "Selected", 1, ""),
-    ]
+    for metric, label in [
+        ("precision", "|Δ Precision|"),
+        ("recall", "|Δ Recall|"),
+        ("f1", "|Δ F1|"),
+        ("n_selected", "|Δ Selected|"),
+    ]:
+        for weight, name in [
+            ("raw", "Raw"),
+            ("logml", "LogML"),
+        ]:
+            col = f"abs_delta_{metric}_{weight}_{method}"
 
-    for metric, label, scale, suffix in metrics:
-        col = f"sens_diff_{metric}_{method}"
+            out[f"{label} {name}"] = [
+                f"{mean:.2f} ({se:.2f})"
+                for mean, se in zip(
+                    d[col + "_mean"],
+                    d[col + "_se"],
+                )
+            ]
 
-        out[label] = [
-            f"{scale * m:+.2f} ({scale * s:.2f}){suffix}"
-            for m, s in zip(
+    # Jaccard is already a nonnegative distance, so no |Δ| notation needed.
+    for weight, name in [
+        ("raw", "Raw"),
+        ("logml", "LogML"),
+    ]:
+        col = f"jaccard_{weight}_{method}"
+
+        out[f"Jaccard {name}"] = [
+            f"{mean:.2f} ({se:.2f})"
+            for mean, se in zip(
                 d[col + "_mean"],
                 d[col + "_se"],
             )
         ]
 
-    col = f"jaccard_diff_{method}"
+    # -----------------------------
+    # CSV export
+    # -----------------------------
+    # Start with everything shown in the notebook.
+    export_out = out.copy()
 
-    out["Jaccard"] = [
-        f"{m:+.2f} ({s:.2f})"
-        for m, s in zip(
-            d[col + "_mean"],
-            d[col + "_se"],
-        )
-    ]
+    # Add TP / FP diagnostics to the CSV only.
+    for stat, label in [
+        ("tp", "|Δ TP|"),
+        ("fp", "|Δ FP|"),
+    ]:
+        for weight, name in [
+            ("raw", "Raw"),
+            ("logml", "LogML"),
+        ]:
+            col = f"abs_delta_{stat}_{weight}_{method}"
+
+            export_out[f"{label} {name}"] = [
+                f"{mean:.2f} ({se:.2f})"
+                for mean, se in zip(
+                    d[col + "_mean"],
+                    d[col + "_se"],
+                )
+            ]
 
     if output_path is not None:
-        out.to_csv(output_path, index=False)
+        export_out.to_csv(
+            output_path,
+            index=False,
+        )
 
-    display(out)
+    # -----------------------------
+    # Grouped notebook headers
+    # -----------------------------
+    out.columns = pd.MultiIndex.from_tuples([
+        ("", "Parameter"),
+        ("", "Value"),
+        ("|Δ Precision|", "Raw"),
+        ("|Δ Precision|", "LogML"),
+        ("|Δ Recall|", "Raw"),
+        ("|Δ Recall|", "LogML"),
+        ("|Δ F1|", "Raw"),
+        ("|Δ F1|", "LogML"),
+        ("|Δ Selected|", "Raw"),
+        ("|Δ Selected|", "LogML"),
+        ("Jaccard", "Raw"),
+        ("Jaccard", "LogML"),
+    ])
+
+    styler = (
+        out.style
+        .hide(axis="index")
+        .set_table_styles([
+            {
+                "selector": "th.col2, td.col2",
+                "props": [
+                    ("border-left", "1px solid rgba(140,140,140,0.45)")
+                ],
+            },
+            {
+                "selector": "th.col4, td.col4",
+                "props": [
+                    ("border-left", "1px solid rgba(140,140,140,0.45)")
+                ],
+            },
+            {
+                "selector": "th.col6, td.col6",
+                "props": [
+                    ("border-left", "1px solid rgba(140,140,140,0.45)")
+                ],
+            },
+            {
+                "selector": "th.col8, td.col8",
+                "props": [
+                    ("border-left", "1px solid rgba(140,140,140,0.45)")
+                ],
+            },
+            {
+                "selector": "th.col10, td.col10",
+                "props": [
+                    ("border-left", "1px solid rgba(140,140,140,0.45)")
+                ],
+            },
+        ])
+    )
+
+    display(styler)
 
     display(Markdown(
-        "*Values are LogML sensitivity minus Raw sensitivity. "
-        "Positive values indicate greater LogML sensitivity; "
-        "negative values indicate greater Raw sensitivity. "
-        "Parentheses contain SEs.*"
+        "*Values are mean absolute changes from the reference configuration; "
+        "parentheses contain SEs. Jaccard distance measures change in the "
+        "selected-variable set, with 0 indicating identical sets.*"
     ))
 
 
@@ -539,18 +818,18 @@ def plot_hyperparameter_sensitivity(
     ]
 
     metrics = [
-        ("recall", "Recall", 1),
-        ("f1", "F1", 1),
-        ("r_miss", r"$r_{\rm miss}$ (pp)", 100),
-        ("n_selected", "Number selected", 1),
-        ("jaccard", "Jaccard distance", 1),
+        ("recall", r"$|\Delta|$ Recall", 1),
+        ("f1", r"$|\Delta|$ F1", 1),
+        ("r_miss", r"$|\Delta|$ $r_{\rm miss}$ (pp)", 100),
+        ("n_selected", r"$|\Delta|$ \# selected", 1),
+        ("jaccard", "Jaccard dist.", 1),
     ]
 
     fig, axes = plt.subplots(
         5,
         3,
         figsize=(8.2, 7.2),
-        dpi=100,
+        dpi=180,
         sharey="row",
     )
 
@@ -573,9 +852,20 @@ def plot_hyperparameter_sensitivity(
                 else:
                     col = f"abs_delta_{metric}_{weight}_{method}"
 
-                x = np.r_[d["value"].to_numpy(float), ref]
-                y = np.r_[d[col + "_mean"].to_numpy(float) * scale, 0.0]
-                se = np.r_[d[col + "_se"].to_numpy(float) * scale, 0.0]
+                x = np.r_[
+                    d["value"].to_numpy(float),
+                    ref,
+                ]
+
+                y = np.r_[
+                    d[col + "_mean"].to_numpy(float) * scale,
+                    0.0,
+                ]
+
+                se = np.r_[
+                    d[col + "_se"].to_numpy(float) * scale,
+                    0.0,
+                ]
 
                 order = np.argsort(x)
 
@@ -587,40 +877,48 @@ def plot_hyperparameter_sensitivity(
                     linestyle=linestyle,
                     color="black",
                     markerfacecolor="white",
-                    markersize=4,
-                    linewidth=1,
+                    markersize=3.8,
+                    linewidth=0.9,
                     capsize=2,
                     label=label,
                 )
 
-            ticks = sorted(set(d["value"].tolist() + [ref]))
+            ticks = sorted(
+                set(d["value"].tolist() + [ref])
+            )
             ax.set_xticks(ticks)
 
-            for tick, value in zip(ax.get_xticklabels(), ticks):
+            for tick, value in zip(
+                ax.get_xticklabels(),
+                ticks,
+            ):
                 if value == ref:
                     tick.set_fontweight("bold")
 
             ax.set_ylim(bottom=0)
-            ax.grid(axis="y", color="0.9", linewidth=0.6)
 
-            ax.tick_params(axis="both", labelsize=7)
+            ax.grid(
+                axis="y",
+                color="0.9",
+                linewidth=0.5,
+            )
+
+            ax.tick_params(
+                axis="both",
+                labelsize=7,
+            )
 
             if i == 0:
-                ax.set_title(title, fontsize=10)
+                ax.set_title(
+                    title,
+                    fontsize=10,
+                )
 
             if j == 0:
-                if metric in {"recall", "f1"}:
-                    ax.set_ylabel(
-                        rf"Mean $|\Delta|$ {ylabel}",
-                        fontsize=8,
-                    )
-                elif metric == "jaccard":
-                    ax.set_ylabel(ylabel, fontsize=8)
-                else:
-                    ax.set_ylabel(
-                        rf"Mean $|\Delta|$ {ylabel}",
-                        fontsize=8,
-                    )
+                ax.set_ylabel(
+                    ylabel,
+                    fontsize=8,
+                )
 
             if i == len(metrics) - 1:
                 ax.set_xlabel(
@@ -628,23 +926,21 @@ def plot_hyperparameter_sensitivity(
                     fontsize=8,
                 )
 
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-
-    fig.legend(
-        handles,
-        labels,
-        loc="upper center",
-        ncol=2,
+    # Put the legend unobtrusively in the upper-right panel.
+    axes[0, 2].legend(
+        loc="upper right",
         frameon=False,
-        fontsize=8,
+        fontsize=7,
+        handlelength=2.2,
+        borderaxespad=0.2,
     )
 
-    fig.tight_layout(rect=[0, 0, 1, 0.965])
+    fig.tight_layout()
 
     if output_path is not None:
         fig.savefig(
             output_path,
-            dpi=300,
+            dpi=400,
             bbox_inches="tight",
         )
 
