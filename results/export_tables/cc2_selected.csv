@@ -1,7 +1,7 @@
-n,p,s2,Method,Mean Raw,Mean LogML,Exact Raw,Exact LogML,Under Raw,Under LogML,Over Raw,Over LogML,Mean Excess Raw,Mean Excess LogML
-500,50,1.0,Local,6.35,4.53,1%,43%,0%,2%,99%,55%,2.35,0.55
-500,50,1.0,Global SE,4.78,4.22,28%,60%,5%,9%,67%,31%,0.83,0.31
-500,50,1.0,Global Max,3.88,3.02,43%,14%,32%,86%,25%,0%,0.26,0.00
-500,200,1.0,Local,24.08,12.34,0%,0%,0%,0%,100%,100%,20.08,8.34
-500,200,1.0,Global SE,8.71,7.90,1%,1%,0%,0%,99%,99%,4.71,3.90
-500,200,1.0,Global Max,1.33,3.76,2%,74%,98%,24%,0%,2%,0.00,0.02
+n,p,s2,Method,Mean selected Raw,Mean selected LogML,Exact Raw,Exact LogML,Under Raw,Under LogML,Over Raw,Over LogML,Mean excess Raw,Mean excess LogML
+500,50,1,Global SE,1.90,3.06,5%,19%,92%,67%,3%,14%,0.03,0.16
+500,50,1,Local,6.04,6.00,17%,13%,4%,4%,79%,83%,2.10,2.06
+500,50,1,Global Max,0.07,0.15,0%,0%,100%,100%,0%,0%,0.00,0.00
+500,200,1,Global SE,6.60,12.63,7%,0%,10%,0%,83%,100%,2.72,8.63
+500,200,1,Local,22.96,22.58,0%,0%,0%,0%,100%,100%,18.96,18.58
+500,200,1,Global Max,0.14,0.16,0%,0%,100%,100%,0%,0%,0.00,0.00
