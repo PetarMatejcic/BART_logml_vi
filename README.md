@@ -45,3 +45,8 @@ python Experiments/run_hyperparameter_experiments.py
 The saved experiment results are analysed in `BVI_comparison.ipynb`.
 
 The main simulation outputs are stored in `results/`, hyperparameter experiment outputs in `results/hyperparams_results/`, and the processed CSV tables used in the final report are stored in `results/export_tables/`.
+
+## Report
+
+The accompanying report is available in this repository as [`BART_logML_selection_report.pdf`](report/BART_logML_selection_report.pdf.pdf). The report describes the methodology, experiments, and interpretation of the results, while this repository contains the code and data used to produce them.
+
