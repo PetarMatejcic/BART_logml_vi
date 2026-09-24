@@ -1,3 +1,19 @@
-.venv
+# Python environments / caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated figures
 figures/
-*__pycache__*
+
+# Local bibliography
+Bibliography/
+
+# Intermediate simulation outputs
+results/*_001.csv
+
+# Intermediate hyperparameter runs
+results/hyperparams_results/*_001.csv
