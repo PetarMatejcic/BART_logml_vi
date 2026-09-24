@@ -12,8 +12,8 @@ figures/
 # Local bibliography
 Bibliography/
 
-# Intermediate simulation outputs
+# Intermediate main simulation outputs
 results/*_001.csv
 
-# Intermediate hyperparameter runs
-results/hyperparams_results/*_001.csv
+# Generated notebook HTML
+BVI_comparison.html
