@@ -1,4 +1,4 @@
-# BART Feature Selection Simulation Experiments
+# BVI Simulation Experiments
 
 This repository contains code, simulation results, and analysis notebooks for experiments evaluating BART feature selection across several test scenarios.
 
@@ -12,15 +12,29 @@ This repository contains code, simulation results, and analysis notebooks for ex
 * `scenario_analysis_helpers.py` — helper functions for scenario-level analysis.
 * `sensitivity_analysis_helpers.py` — helper functions for sensitivity analysis.
 
+## Installation
+
+Python 3.10 or newer is recommended.
+
+Create and activate a virtual environment, then install the dependencies:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+`requirements.txt` installs the version of [GenBART](https://github.com/PetarMatejcic/GenBART) used for these experiments directly from GitHub.
+
 ## Running the experiments
 
-The main experiments can be run with:
+Run the main simulation experiments with:
 
 ```bash
 python Experiments/run_experiments.py
 ```
 
-Hyperparameter experiments can be run with:
+Run the hyperparameter experiments with:
 
 ```bash
 python Experiments/run_hyperparameter_experiments.py
@@ -28,4 +42,6 @@ python Experiments/run_hyperparameter_experiments.py
 
 ## Analysis
 
-The saved experiment results are analysed in `BVI_comparison.ipynb`. The processed tables used in the report are available in `results/export_tables/`.
+The saved experiment results are analysed in `BVI_comparison.ipynb`.
+
+The main simulation outputs are stored in `results/`, hyperparameter experiment outputs in `results/hyperparams_results/`, and the processed CSV tables used in the final report are stored in `results/export_tables/`.
