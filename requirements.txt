@@ -1,0 +1,7 @@
+numpy
+pandas
+scipy
+matplotlib
+tqdm
+ipython
+genbart @ git+https://github.com/PetarMatejcic/GenBART.git@47cf61b32c564f035790db432e0241b9affe4ff0
