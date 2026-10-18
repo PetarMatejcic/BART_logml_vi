@@ -1,16 +1,83 @@
-# BART Feature Selection Simulation Experiments
+# LogML-Weighted Variable Importance for BART
 
-This repository contains code, simulation results, and analysis notebooks for experiments evaluating BART feature selection across several test scenarios.
+This repository contains the simulation experiments, analysis, and report for a
+study of variable selection in Bayesian Additive Regression Trees (BART).
+
+The project investigates whether standard BART variable inclusion proportions
+can be improved by incorporating information about the contribution of the tree
+structure associated with each split. It compares the resulting importance
+measure with standard split-count variable inclusion proportions in a common
+permutation-based feature-selection framework.
+
+## Research question
+
+Standard variable inclusion proportions count how often each predictor is used
+in a splitting rule, giving every split equal weight. This study asks whether
+feature selection can be improved by weighting those split occurrences
+according to how strongly the corresponding subtree is supported by the data.
+
+The experiments focus on two questions:
+
+1. Does the logML-weighted importance improve recovery of truly relevant
+   predictors relative to standard variable inclusion proportions?
+2. Are the conclusions stable under moderate changes to selected BART
+   hyperparameters?
+
+## Method
+
+For each internal node $v$, the fitted subtree rooted at that node is compared
+with an alternative tree in which the subtree is replaced by a single terminal
+node. Their difference in log marginal likelihood defines the gain
+$\delta_v$, and the split receives weight
+
+$$
+w_v = \max(\delta_v, 0).
+$$
+
+These weights are accumulated by splitting variable and normalized to form a
+relative importance measure. Standard and logML-weighted importance are then
+used within the same permutation-based feature-selection procedure, so the
+comparison isolates the effect of changing the importance statistic.
+
+## Main result
+
+Across the synthetic experiments, logML-weighted selection generally achieved
+better feature-recovery performance than standard variable inclusion
+proportions, with the clearest gains in the higher-dimensional
+continuous-response settings.
+
+The improvement was not universal: in one lower-dimensional continuous
+setting, standard variable inclusion proportions performed better because the
+logML-weighted method tended to underselect. The binary-response scenarios were
+difficult for both approaches.
+
+A separate hyperparameter-sensitivity study broadly preserved the main
+conclusions. The full results and discussion are given in the report.
+
+
+## Report
+
+The full methodology, experimental design, results, and discussion are available in:
+
+[**BART_logML_selection_report.pdf**](report/BART_logML_selection_report.pdf)
+
 
 ## Repository structure
 
-* `Experiments/` — scripts and helper functions for running the main and hyperparameter experiments.
-* `results/` — saved simulation outputs.
-* `results/hyperparams_results/` — results from hyperparameter experiments.
-* `results/export_tables/` — processed CSV tables used in the final report.
-* `BVI_comparison.ipynb` — main notebook for comparing and analysing experiment results.
-* `scenario_analysis_helpers.py` — helper functions for scenario-level analysis.
-* `sensitivity_analysis_helpers.py` — helper functions for sensitivity analysis.
+- `Experiments/` — simulation drivers and data-generating functions.
+- `results/` — committed repeat-level simulation outputs.
+- `results/hyperparams_results/` — paired hyperparameter-sensitivity results.
+- `results/export_tables/` — derived tables used in the report.
+- `simulation_analysis.ipynb` — validation, aggregation, and analysis of the
+  committed results.
+- `scenario_analysis_helpers.py` and `sensitivity_analysis_helpers.py` —
+  analysis utilities.
+- `report/BART_logML_selection_report.pdf` — full methodology, results, and
+  discussion.
+
+The BART implementation used in the experiments is provided by
+[GenBART](https://github.com/PetarMatejcic/GenBART).
+
 
 ## Installation
 
@@ -28,21 +95,16 @@ pip install -r requirements.txt
 
 ## Running the experiments
 
-The reported experiments use:
+The reported experiments use 20 BART trees, 200 burn-in iterations, 1,000
+retained posterior draws, 10 response permutations, and base seed 123. The main
+experiments use 100 simulation repeats, while the hyperparameter-sensitivity
+study uses 50 paired repeats.
 
-- 20 BART trees in the reference model;
-- 200 burn-in iterations and 1,000 retained posterior draws;
-- 10 response permutations per feature-selection run;
-- one BART fit per observed or permuted response;
-- permutation threshold level \(\alpha=0.05\);
-- 100 simulation repeats for the main experiments;
-- 50 paired repeats for the hyperparameter-sensitivity experiments;
-- base seed 123.
-
-The full model and selector configuration is defined explicitly in the
+The full model and selector configurations are defined explicitly in the
 experiment scripts.
 
-### Main simulation study
+<details>
+<summary>Commands for the main simulation study</summary>
 
 ```bash
 # Scenarios 1-2: continuous predictors
@@ -95,11 +157,11 @@ python3 Experiments/run_experiments.py \
     --seed 123 \
     --n-processes 4
 ```
+</details>
 
-### Hyperparameter-sensitivity study
 
-The sensitivity study varies one of \(m\), \(\beta\), or \(k\) at a time around
-the reference configuration.
+<details>
+<summary>Commands for the hyperparameter-sensitivity study</summary>
 
 ```bash
 python3 Experiments/run_hyperparameter_experiments.py \
@@ -129,6 +191,7 @@ python3 Experiments/run_hyperparameter_experiments.py \
     --seed 123 \
     --n-processes 4
 ```
+</details>
 
 `--n-processes` controls only parallel execution and may be changed without
 changing the intended experimental design.
@@ -136,13 +199,21 @@ changing the intended experimental design.
 The committed CSV files in `results/` contain the results used in the report,
 including the repeat-level random seeds.
 
-## Analysis
+## Analysis workflow
 
-The saved experiment results are analysed in `BVI_comparison.ipynb`.
+The expensive BART simulations are stored as committed repeat-level CSV files;
+`simulation_analysis.ipynb` validates and aggregates those results without
+rerunning the simulations.
 
-The main simulation outputs are stored in `results/`, hyperparameter experiment outputs in `results/hyperparams_results/`, and the processed CSV tables used in the final report are stored in `results/export_tables/`.
-
-## Report
-
-The accompanying report is available in this repository as [`BART_logML_selection_report.pdf`](report/BART_logML_selection_report.pdf). The report describes the methodology, experiments, and interpretation of the results, while this repository contains the code and data used to produce them.
+```text
+Experiments/*.py
+      ↓
+results/*.csv
+results/hyperparams_results/*.csv
+      ↓
+simulation_analysis.ipynb
+      ↓
+results/export_tables/*.csv
+      ↓
+report/BART_logML_selection_report.pdf
 
