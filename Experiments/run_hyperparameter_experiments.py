@@ -41,10 +41,6 @@ from genbart import ProbitBart, RegBart
 from runners import run_scenario, summarise_results
 
 
-# ---------------------------------------------------------------------------
-# EDITABLE CONFIGURATION
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class ScenarioSpec:
     datagen: Callable[[int, int, float], tuple[np.ndarray, np.ndarray, np.ndarray]]
@@ -120,10 +116,6 @@ CONFIG_ORDER = {
     for index, config in enumerate(HYPERPARAMETER_CONFIGS)
 }
 
-
-# ---------------------------------------------------------------------------
-# EXECUTION
-# ---------------------------------------------------------------------------
 
 METRIC_COLUMNS = tuple(
     f"{metric}_{importance}_{method}"
@@ -215,6 +207,11 @@ def _run_one_configuration(
 
         if X.ndim != 2:
             raise ValueError(f"X must be two-dimensional; got shape {X.shape}.")
+        if X.shape[1] != adapter_p:
+            raise ValueError(
+                f"Data generator returned {X.shape[1]} predictors "
+                f"for requested p={adapter_p}."
+            )
 
         if y.shape[0] != X.shape[0]:
             raise ValueError(

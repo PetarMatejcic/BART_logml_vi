@@ -1,6 +1,10 @@
 import numpy as np
 from scipy.stats import norm
 
+
+CM2_P = 84
+
+
 # Latent Functions
 
 def friedman(x: np.ndarray):
@@ -64,6 +68,9 @@ def modfriedman(x: np.ndarray):
 #Scenarion definitions
 
 def datagen_cc0(n: int, p:int, s:float):
+    if p < 1:
+        raise ValueError("CC0 requires p >= 1.")
+    
     X = np.random.normal(0, 1, (n, p))
     y = np.random.normal(0, 1, n)
 
@@ -71,6 +78,9 @@ def datagen_cc0(n: int, p:int, s:float):
 
 
 def datagen_cc1(n: int, p: int, s: float):
+    if p < 1:
+        raise ValueError("CC1 requires p >= 1.")
+    
     X = np.random.uniform(0, 1, (n, p))
     y = friedman(X) + np.random.normal(0, s, n)
 
@@ -81,6 +91,9 @@ def datagen_cc1(n: int, p: int, s: float):
 
 
 def datagen_cc2(n: int, p:int, s: float):
+    if p < 1:
+        raise ValueError("CC2 requires p >= 1.")
+    
     indices = np.arange(p)
     S = 0.3 ** np.abs(indices[:, None] - indices[None, :])
 
@@ -94,9 +107,12 @@ def datagen_cc2(n: int, p:int, s: float):
 
 
 def datagen_cm1(n: int, p: int, s: float):
+    if p < 6 or p % 2 != 0:
+        raise ValueError("CM1 requires an even p >= 6.")
+
     p_ = np.ceil(p/2).astype(int)
 
-    X = np.concat(
+    X = np.concatenate(
         (
             np.random.binomial(1, 0.5, (n, p_)),
             np.random.uniform(0, 1, (n, p_))
@@ -112,10 +128,15 @@ def datagen_cm1(n: int, p: int, s: float):
 
 
 def datagen_cm2(n: int, p: int, s: float):
+    if p != CM2_P:
+        raise ValueError(
+            f"CM2 uses a fixed number of predictors p={CM2_P}; got p={p}."
+        )
+    
     S = np.full((44, 44), 0.3)
     np.fill_diagonal(S, 1)
 
-    X = np.concat(
+    X = np.concatenate(
         (
             np.random.binomial(1, 0.2, (n, 20)),
             np.random.binomial(1, 0.5, (n, 20)),
@@ -141,6 +162,11 @@ def datagen_bm1(n: int, p:int, s: float):
     return X, y, truth
 
 def datagen_bm2(n: int, p:int, s: float):
+    if p != CM2_P:
+        raise ValueError(
+            f"BM2 uses a fixed number of predictors p={CM2_P}; got p={p}."
+        )
+    
     X, y_, truth = datagen_cm2(n, 0, 0)
     y = np.array(
         [np.random.binomial(1, norm.cdf(i))

@@ -57,10 +57,6 @@ from runners import run_scenario, summarise_results
 from genbart import RegBart, ProbitBart
 
 
-# ---------------------------------------------------------------------------
-# EDITABLE CONFIGURATION
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class ScenarioSpec:
     datagen: Callable[[int, int, float], tuple[np.ndarray, np.ndarray, np.ndarray]]
@@ -97,13 +93,9 @@ MODEL_CONFIGS: dict[str, ModelSpec] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# EXECUTION
-# ---------------------------------------------------------------------------
-
 METRIC_COLUMNS = tuple(
     f"{metric}_{importance}_{method}"
-    for importance in ("raw", "logl")
+    for importance in ("raw", "logml")
     for method in ("local", "global_max", "global_se")
     for metric in ("precision", "recall", "f1", "r_miss", "n_selected")
 )
@@ -178,6 +170,11 @@ def _run_one_repeat(
 
         if X.ndim != 2:
             raise ValueError(f"X must be two-dimensional; got shape {X.shape}.")
+        if X.shape[1] != adapter_p:
+            raise ValueError(
+                f"Data generator returned {X.shape[1]} predictors "
+                f"for requested p={adapter_p}."
+            )
 
         if y.shape[0] != X.shape[0]:
             raise ValueError(
