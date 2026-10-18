@@ -78,8 +78,8 @@ def datagen_cc0(n: int, p:int, s:float):
 
 
 def datagen_cc1(n: int, p: int, s: float):
-    if p < 1:
-        raise ValueError("CC1 requires p >= 1.")
+    if p < 5:
+        raise ValueError("CC1 requires p >= 5.")
     
     X = np.random.uniform(0, 1, (n, p))
     y = friedman(X) + np.random.normal(0, s, n)
@@ -91,8 +91,8 @@ def datagen_cc1(n: int, p: int, s: float):
 
 
 def datagen_cc2(n: int, p:int, s: float):
-    if p < 1:
-        raise ValueError("CC2 requires p >= 1.")
+    if p < 10:
+        raise ValueError("CC2 requires p >= 10.")
     
     indices = np.arange(p)
     S = 0.3 ** np.abs(indices[:, None] - indices[None, :])
@@ -146,7 +146,7 @@ def datagen_cm2(n: int, p: int, s: float):
     )
     y = modfriedman(X) + np.random.normal(0, s, n)
 
-    truth = np.full(84, False)
+    truth = np.full(CM2_P, False)
     truth[[0, 20, 40, 41, 42, 43]] = True
 
     return X, y, truth
@@ -167,7 +167,7 @@ def datagen_bm2(n: int, p:int, s: float):
             f"BM2 uses a fixed number of predictors p={CM2_P}; got p={p}."
         )
     
-    X, y_, truth = datagen_cm2(n, 0, 0)
+    X, y_, truth = datagen_cm2(n, p, 0)
     y = np.array(
         [np.random.binomial(1, norm.cdf(i))
          for i in y_]
