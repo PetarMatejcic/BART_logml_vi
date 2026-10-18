@@ -1,8 +1,21 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from IPython.display import display, Markdown
+
+
+def _require_complete(df):
+    data = df.copy()
+
+    if "status" in data.columns:
+        failed = data[~data["status"].eq("complete")]
+
+        if not failed.empty:
+            raise ValueError(
+                f"Found {len(failed)} incomplete experiment rows."
+            )
+
+    return data
 
 
 def aggregate_experiment_results(df):
@@ -18,9 +31,7 @@ def aggregate_experiment_results(df):
     group_cols = ["scenario", "model_key", "n", "p", "s2"]
 
     # If status is available, only aggregate successfully completed runs.
-    data = df.copy()
-    if "status" in data.columns:
-        data = data[data["status"] == "complete"].copy()
+    data = _require_complete(df)
 
     methods = [
         "raw_local",

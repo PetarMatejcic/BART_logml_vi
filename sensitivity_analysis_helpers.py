@@ -6,6 +6,20 @@ import matplotlib.pyplot as plt
 from IPython.display import display, Markdown
 
 
+def _require_complete(df):
+    data = df.copy()
+
+    if "status" in data.columns:
+        failed = data[~data["status"].eq("complete")]
+
+        if not failed.empty:
+            raise ValueError(
+                f"Found {len(failed)} incomplete experiment rows."
+            )
+
+    return data
+
+
 def _as_set(x):
     if pd.isna(x):
         return set()
@@ -20,7 +34,7 @@ def _jaccard_distance(a, b):
 
 
 def aggregate_hyperparameter_results(df):
-    data = df[df["status"].eq("complete")].copy() if "status" in df else df.copy()
+    data = _require_complete(df)
 
     groups = [
         "scenario", "model_key", "n", "p", "s2", "config_id",
@@ -232,7 +246,7 @@ def display_hyperparameter_summary(summary_df, method, output_path=None):
 
 
 def aggregate_paired_hyperparameter_results(df):
-    data = df[df["status"].eq("complete")].copy() if "status" in df else df.copy()
+    data = _require_complete(df)
     keys = ["scenario", "model_key", "n", "p", "s2", "repeat", "seed"]
     stats = ["precision", "recall", "f1", "r_miss", "n_selected"]
     methods = ["raw_local", "raw_global_se", "raw_global_max",
@@ -459,11 +473,7 @@ def display_paired_summary(
 
 
 def aggregate_hyperparameter_sensitivity(df):
-    data = (
-        df[df["status"].eq("complete")].copy()
-        if "status" in df
-        else df.copy()
-    )
+    data = _require_complete(df)
 
     keys = [
         "scenario",
