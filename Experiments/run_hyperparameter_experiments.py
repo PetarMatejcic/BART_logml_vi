@@ -87,12 +87,31 @@ SCENARIOS: dict[str, ScenarioSpec] = {
 MODEL_CONFIGS: dict[str, ModelSpec] = {
     "continuous": ModelSpec(
         model=RegBart,
-        model_params={},
+        model_params={
+            "nu": 3.0,
+            "q": 0.90,
+            "n_burn": 200,
+            "n_samples": 1000,
+            "move_distribution": (0.25, 0.25, 0.40, 0.10),
+        },
     ),
     "binary": ModelSpec(
         model=ProbitBart,
-        model_params={},
+        model_params={
+            "n_burn": 200,
+            "n_samples": 1000,
+            "move_distribution": (0.25, 0.25, 0.40, 0.10),
+        },
     ),
+}
+
+
+SELECTOR_PARAMS = {
+    "n_permutations": 10,
+    "n_repeats": 1,
+    "alpha": 0.05,
+    "method": "global_se",
+    "importance_kind": "raw",
 }
 
 
@@ -231,6 +250,7 @@ def _run_one_configuration(
         s2=s2,
         model=model_spec.model,
         model_params=model_params,
+        selector_params=SELECTOR_PARAMS,
         random_state=seed,
     )
 
@@ -351,7 +371,7 @@ def run_hyperparameter_experiments(
     s2: float,
     repeats: int,
     base_seed: int = 0,
-    output_dir: str | Path = "hyperparameter_results",
+    output_dir: str | Path = "results/hyperparameter_results",
     n_processes: int = 1,
 ) -> dict[str, pd.DataFrame]:
     """Run the fixed seven-configuration hyperparameter sensitivity study."""

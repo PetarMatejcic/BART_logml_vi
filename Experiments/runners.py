@@ -10,6 +10,7 @@ def run_scenario(
     s2: float,
     model,
     model_params,
+    selector_params,
     random_state: int | None = None,
 ):
     s = np.sqrt(s2)
@@ -19,9 +20,7 @@ def run_scenario(
     selector = BartVariableSelector(
         model,
         model_params,
-        n_permutations=10,
-        n_repeats=1,
-        importance_kind="raw",
+        **selector_params,
         random_state=random_state,
     )
 

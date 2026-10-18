@@ -84,12 +84,39 @@ SCENARIOS: dict[str, ScenarioSpec] = {
 MODEL_CONFIGS: dict[str, ModelSpec] = {
     "continuous": ModelSpec(
         model=RegBart,
-        model_params={"m": 20},
+        model_params={
+            "m": 20,
+            "alpha": 0.95,
+            "beta": 2.0,
+            "k": 2.0,
+            "nu": 3.0,
+            "q": 0.90,
+            "n_burn": 200,
+            "n_samples": 1000,
+            "move_distribution": (0.25, 0.25, 0.40, 0.10),
+        },
     ),
     "binary": ModelSpec(
         model=ProbitBart,
-        model_params={"m": 20},
+        model_params={
+            "m": 20,
+            "alpha": 0.95,
+            "beta": 2.0,
+            "k": 2.0,
+            "n_burn": 200,
+            "n_samples": 1000,
+            "move_distribution": (0.25, 0.25, 0.40, 0.10),
+        },
     ),
+}
+
+
+SELECTOR_PARAMS = {
+    "n_permutations": 10,
+    "n_repeats": 1,
+    "alpha": 0.05,
+    "method": "global_se",
+    "importance_kind": "raw",
 }
 
 
@@ -186,13 +213,14 @@ def _run_one_repeat(
 
     model_params = dict(model_spec.model_params)
 
-    raw, logl = run_scenario(
+    raw, logml = run_scenario(
         datagen=datagen_adapter,
         n=n,
         p=p,
         s2=s2,
         model=model_spec.model,
         model_params=model_params,
+        selector_params=SELECTOR_PARAMS,
         random_state=seed,
     )
 
@@ -201,7 +229,7 @@ def _run_one_repeat(
             "Expected the data-generating function to be called exactly once."
         )
 
-    return summarise_results(raw, logl, truth_holder[0])
+    return summarise_results(raw, logml, truth_holder[0])
 
 
 def _run_repeat_job(

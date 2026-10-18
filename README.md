@@ -28,17 +28,113 @@ pip install -r requirements.txt
 
 ## Running the experiments
 
-Run the main simulation experiments with:
+The reported experiments use:
+
+- 20 BART trees in the reference model;
+- 200 burn-in iterations and 1,000 retained posterior draws;
+- 10 response permutations per feature-selection run;
+- one BART fit per observed or permuted response;
+- permutation threshold level \(\alpha=0.05\);
+- 100 simulation repeats for the main experiments;
+- 50 paired repeats for the hyperparameter-sensitivity experiments;
+- base seed 123.
+
+The full model and selector configuration is defined explicitly in the
+experiment scripts.
+
+### Main simulation study
 
 ```bash
-python Experiments/run_experiments.py
+# Scenarios 1-2: continuous predictors
+python3 Experiments/run_experiments.py \
+    --scenarios cc1 cc2 \
+    --ns 500 \
+    --ps 50 200 \
+    --s2s 1 \
+    --repeats 100 \
+    --seed 123 \
+    --n-processes 4
+
+# Scenario 3: mixed predictors
+python3 Experiments/run_experiments.py \
+    --scenarios cm1 \
+    --ns 500 1000 \
+    --ps 50 200 \
+    --s2s 1 10 \
+    --repeats 100 \
+    --seed 123 \
+    --n-processes 4
+
+# Scenario 4: fixed p = 84
+python3 Experiments/run_experiments.py \
+    --scenarios cm2 \
+    --ns 500 1000 \
+    --ps 84 \
+    --s2s 1 10 \
+    --repeats 100 \
+    --seed 123 \
+    --n-processes 4
+
+# Scenario 5: binary response
+python3 Experiments/run_experiments.py \
+    --scenarios bm1 \
+    --ns 500 1000 \
+    --ps 50 200 \
+    --s2s 1 \
+    --repeats 100 \
+    --seed 123 \
+    --n-processes 4
+
+# Scenario 6: binary response, fixed p = 84
+python3 Experiments/run_experiments.py \
+    --scenarios bm2 \
+    --ns 500 1000 \
+    --ps 84 \
+    --s2s 1 \
+    --repeats 100 \
+    --seed 123 \
+    --n-processes 4
 ```
 
-Run the hyperparameter experiments with:
+### Hyperparameter-sensitivity study
+
+The sensitivity study varies one of \(m\), \(\beta\), or \(k\) at a time around
+the reference configuration.
 
 ```bash
-python Experiments/run_hyperparameter_experiments.py
+python3 Experiments/run_hyperparameter_experiments.py \
+    --scenarios cc1 \
+    --n 500 \
+    --p 50 \
+    --s2 1 \
+    --repeats 50 \
+    --seed 123 \
+    --n-processes 4
+
+python3 Experiments/run_hyperparameter_experiments.py \
+    --scenarios cm2 \
+    --n 500 \
+    --p 84 \
+    --s2 10 \
+    --repeats 50 \
+    --seed 123 \
+    --n-processes 4
+
+python3 Experiments/run_hyperparameter_experiments.py \
+    --scenarios bm1 \
+    --n 1000 \
+    --p 50 \
+    --s2 1 \
+    --repeats 50 \
+    --seed 123 \
+    --n-processes 4
 ```
+
+`--n-processes` controls only parallel execution and may be changed without
+changing the intended experimental design.
+
+The committed CSV files in `results/` contain the results used in the report,
+including the repeat-level random seeds.
 
 ## Analysis
 
@@ -48,5 +144,5 @@ The main simulation outputs are stored in `results/`, hyperparameter experiment 
 
 ## Report
 
-The accompanying report is available in this repository as [`BART_logML_selection_report.pdf`](report/BART_logML_selection_report.pdf.pdf). The report describes the methodology, experiments, and interpretation of the results, while this repository contains the code and data used to produce them.
+The accompanying report is available in this repository as [`BART_logML_selection_report.pdf`](report/BART_logML_selection_report.pdf). The report describes the methodology, experiments, and interpretation of the results, while this repository contains the code and data used to produce them.
 
